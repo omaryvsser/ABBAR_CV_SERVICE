@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>AABAR CV Report — experiment_20261124_225544</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem auto; max-width: 1020px; padding: 0 1.25rem; color: #1e293b; background: #f8fafc; line-height: 1.55; }
+  h1, h2, h3 { color: #0f172a; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1rem 0 1.5rem; }
+  .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.2rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .card.highlight { border-color: #2563eb; background: #eff6ff; }
+  .card-label { font-size: 0.85rem; color: #475569; font-weight: 600; text-transform: uppercase; }
+  .card-val { font-size: 1.85rem; font-weight: 700; color: #0f172a; margin: 0.25rem 0; }
+  .card-sub { font-size: 0.85rem; color: #64748b; }
+  table { width: 100%; border-collapse: collapse; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; margin-bottom: 1.5rem; font-size: 0.92rem; }
+  th, td { padding: 0.65rem 0.85rem; border-bottom: 1px solid #e2e8f0; text-align: left; }
+  th { background: #1e293b; color: #ffffff; font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  .notice { padding: 0.9rem 1.1rem; border-radius: 8px; margin: 1rem 0; font-weight: 600; }
+  .notice.warn { background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; }
+  .notice.info { background: #e0f2fe; border: 1px solid #0284c7; color: #0c4a6e; font-weight: 400; }
+  .plots { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+  .plot img { max-width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; }
+</style>
+</head>
+<body>
+  <h1>AABAR Gaze Tracking Experiment Report</h1>
+
+  <h2>Experiment Overview</h2>
+  <table>
+    <tbody>
+      <tr><th>Experiment ID</th><td><code>experiment_20261124_225544</code></td></tr>
+      <tr><th>Date and Time</th><td>2026-11-24 22:56:03</td></tr>
+      <tr><th>Screen Resolution</th><td>1920x1080 (Diagonal: 2202.9 px)</td></tr>
+      <tr><th>Calibration Model</th><td>COMPACT_POLYNOMIAL</td></tr>
+      <tr><th>Normalization Method</th><td>StandardScaler</td></tr>
+      <tr><th>Number of Training Samples</th><td>9 targets (219 accepted frames)</td></tr>
+      <tr><th>Number of Validation Trials</th><td>0 (NOT_STARTED: Validation not started)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Main Results</h2>
+  
+            <div class="notice warn"><strong>Status [NOT_STARTED]:</strong> Validation not completed — Accuracy is not available yet.<br/>Calibration finished, but independent validation has not been started yet (press &#x27;t&#x27; in GUI or run --validate-screen).</div>
+            <table>
+              <thead><tr><th>Result</th><th class="num">Value</th></tr></thead>
+              <tbody>
+                <tr><td>Accuracy within 2%</td><td class="num">Not available</td></tr>
+                <tr><td>Accuracy within 5%</td><td class="num">Not available</td></tr>
+                <tr><td>Accuracy within 10%</td><td class="num">Not available</td></tr>
+                <tr><td>Target Selection Accuracy</td><td class="num">Not available</td></tr>
+                <tr><td>Average Error (pixels)</td><td class="num">Not available</td></tr>
+                <tr><td>Average Error (% of screen diagonal)</td><td class="num">Not available</td></tr>
+              </tbody>
+            </table>
+            
+
+  <h2>Detailed Results</h2>
+  
+  <h3>Model Training Fit vs. Independent Validation</h3>
+  <table>
+    <tbody>
+      <tr><th>Calibration Training Error (Fit Only — Not Validation Accuracy)</th><td class="num">51.2 px</td></tr>
+      <tr><th>Independent Validation Performance</th><td class="num">Validation not completed — Accuracy is not available yet.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Simple Explanation</h2>
+  <div class="notice info">Validation not completed — Accuracy is not available yet. Status: [NOT_STARTED] — Calibration finished, but independent validation has not been started yet (press &#x27;t&#x27; in GUI or run --validate-screen). Calibration training fit residual was 51.2 pixels on the calibration grid only, which does NOT represent real-world validation accuracy.</div>
+
+  <h2>Comparison with Previous Experiments</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Experiment ID</th><th>Model</th><th>Norm</th>
+        <th class="num">Selection Acc</th><th class="num">Within 2%</th><th class="num">Within 5%</th><th class="num">Within 10%</th>
+        <th class="num">Mean Err</th><th class="num">Median Err</th><th class="num">Max Err</th>
+        <th class="num">Valid / Rej</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody><tr><td><code>experiment_20261123_221716</code></td><td>POLYNOMIAL</td><td>None</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr><td><code>experiment_20261123_224241</code></td><td>POLYNOMIAL</td><td>None</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr><td><code>experiment_20261124_220355</code></td><td>POLYNOMIAL</td><td>StandardScaler</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr><td><code>experiment_20261124_221738</code></td><td>POLYNOMIAL</td><td>StandardScaler</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr><td><code>experiment_20261124_225435</code></td><td>LINEAR</td><td>StandardScaler</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr style='background:#eef6ff;'><td><code>experiment_20261124_225544</code></td><td>COMPACT_POLYNOMIAL</td><td>StandardScaler</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr></tbody>
+  </table>
+
+  
+</body>
+</html>

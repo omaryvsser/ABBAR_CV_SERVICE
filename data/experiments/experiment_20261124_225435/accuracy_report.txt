@@ -1,0 +1,26 @@
+================================================================================
+AABAR CV - Experiment Accuracy & Gaze Evaluation Report
+================================================================================
+
+--- EXPERIMENT OVERVIEW ---
+Experiment ID:           experiment_20261124_225435
+Date & Time:             2026-11-24 22:54:54
+Screen Resolution:       1920x1080 (Diagonal: 2202.9 px)
+Calibration Model:       LINEAR
+Normalization Method:    StandardScaler
+Training Samples:        9 targets (216 accepted frames)
+Validation Status:       NOT_STARTED
+Validation Trials:       0 (NOT_STARTED: Validation not started)
+
+--- MAIN RESULTS ---
+Validation not completed — Accuracy is not available yet.
+Status Detail [NOT_STARTED]: Calibration finished, but independent validation has not been started yet (press 't' in GUI or run --validate-screen).
+
+--- MODEL TRAINING PERFORMANCE VS INDEPENDENT VALIDATION ---
+Calibration Training Error (Fit Only): Mean = 120.5 px | MAE_X = 0.0447 | MAE_Y = 0.0667
+Independent Validation Accuracy:       Validation not completed — Accuracy is not available yet. (NOT_STARTED)
+
+--- SIMPLE EXPLANATION ---
+Validation not completed — Accuracy is not available yet. Status: [NOT_STARTED] — Calibration finished, but independent validation has not been started yet (press 't' in GUI or run --validate-screen). Calibration training fit residual was 120.5 pixels on the calibration grid only, which does NOT represent real-world validation accuracy.
+
+================================================================================

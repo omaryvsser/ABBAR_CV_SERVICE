@@ -1,0 +1,9 @@
+mediapipe>=0.10.14
+sentencepiece==0.2.0
+opencv-python>=4.8.0.76
+numpy>=1.24.0,<2.0.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+pytest>=7.4.0
+pytest-mock>=3.11.0
+openpyxl>=3.1.0

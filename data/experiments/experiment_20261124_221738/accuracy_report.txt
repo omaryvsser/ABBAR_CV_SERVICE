@@ -1,0 +1,24 @@
+================================================================================
+AABAR CV - Experiment Accuracy & Gaze Evaluation Report
+================================================================================
+
+--- EXPERIMENT OVERVIEW ---
+Experiment ID:           experiment_20261124_221738
+Date & Time:             2026-11-24 22:17:56
+Screen Resolution:       1920x1080 (Diagonal: 2202.9 px)
+Calibration Model:       POLYNOMIAL
+Normalization Method:    StandardScaler
+Training Samples:        9 targets (258 accepted frames)
+Validation Trials:       0 (Validation not completed)
+
+--- MAIN RESULTS ---
+Validation not completed — Accuracy is not available yet.
+
+--- MODEL TRAINING PERFORMANCE VS INDEPENDENT VALIDATION ---
+Calibration Training Error (Fit Only): Mean = 0.9 px | MAE_X = 0.0004 | MAE_Y = 0.0003
+Independent Validation Accuracy:       Validation not completed — Accuracy is not available yet.
+
+--- SIMPLE EXPLANATION ---
+Validation not completed — Accuracy is not available yet. Calibration training fit completed (average residual on calibration points: 0.9 pixels), which reflects model fitting only and does not represent real-world validation accuracy. Run validation on independent targets to measure accuracy percentages and target selection success.
+
+================================================================================
