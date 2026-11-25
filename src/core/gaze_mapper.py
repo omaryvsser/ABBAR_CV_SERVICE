@@ -987,22 +987,22 @@ def compare_and_select_mapper(
     if n_samples <= 12 and not has_val:
         cand_specs: List[Tuple[str, Type[BaseGazeMapper], List[float], float]] = [
             ("pure_decoupled_linear", PureDecoupledLinearGazeMapper, sorted(set([0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.0),
-            ("decoupled_linear", DecoupledLinearGazeMapper, sorted(set([0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.002),
-            ("decoupled_polynomial", DecoupledPolynomialGazeMapper, sorted(set([0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.015),
-            ("compact_linear", CompactLinearGazeMapper, sorted(set([0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0])), 0.005),
-            ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.020),
-            ("linear", LinearGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.035),
-            ("polynomial", PolynomialGazeMapper, sorted(set([0.5, 1.0, 2.5, 5.0])), 0.050),
+            ("decoupled_linear", DecoupledLinearGazeMapper, sorted(set([0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.010),
+            ("decoupled_polynomial", DecoupledPolynomialGazeMapper, sorted(set([0.05, 0.1, 0.25, 0.5, 1.0])), 0.040),
+            ("compact_linear", CompactLinearGazeMapper, sorted(set([0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0])), 0.015),
+            ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([0.25, 0.5, 1.0, 2.5, 5.0])), 0.060),
+            ("linear", LinearGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.045),
+            ("polynomial", PolynomialGazeMapper, sorted(set([0.5, 1.0, 2.5, 5.0])), 0.080),
         ]
     else:
         cand_specs = [
             ("pure_decoupled_linear", PureDecoupledLinearGazeMapper, sorted(set([base_alpha, 0.02, 0.1, 0.5, 1.0])), 0.0),
-            ("decoupled_linear", DecoupledLinearGazeMapper, sorted(set([base_alpha, 0.02, 0.1, 0.5, 1.0])), 0.002),
-            ("decoupled_polynomial", DecoupledPolynomialGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.0])), 0.015),
-            ("compact_linear", CompactLinearGazeMapper, sorted(set([base_alpha, 0.02, 0.1, 0.5, 1.0])), 0.005),
-            ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.5])), 0.020),
-            ("linear", LinearGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.5])), 0.005),
-            ("polynomial", PolynomialGazeMapper, sorted(set([base_alpha, 0.1, 0.5, 1.5, 5.0])), 0.025),
+            ("decoupled_linear", DecoupledLinearGazeMapper, sorted(set([base_alpha, 0.02, 0.1, 0.5, 1.0])), 0.005),
+            ("decoupled_polynomial", DecoupledPolynomialGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.0])), 0.025),
+            ("compact_linear", CompactLinearGazeMapper, sorted(set([base_alpha, 0.02, 0.1, 0.5, 1.0])), 0.010),
+            ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.5])), 0.035),
+            ("linear", LinearGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.5])), 0.020),
+            ("polynomial", PolynomialGazeMapper, sorted(set([base_alpha, 0.1, 0.5, 1.5, 5.0])), 0.050),
         ]
 
     benchmarks: List[Dict[str, Any]] = []

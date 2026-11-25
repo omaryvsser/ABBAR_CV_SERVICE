@@ -331,6 +331,9 @@ def main() -> int:
         config.screen.validation_target_height_px = args.target_height_px
     if args.dwell or args.dwell_demo:
         config.dwell.enabled = True
+        if config.screen.validation_target_width_px is None and config.screen.validation_target_radius_px is None:
+            config.screen.validation_target_width_px = 200.0
+            config.screen.validation_target_height_px = 150.0
     if args.dwell_time is not None:
         config.dwell.dwell_duration_ms = args.dwell_time
     if args.cooldown_time is not None:
@@ -360,6 +363,13 @@ def main() -> int:
         else "Disabled (Press 'd' to toggle)"
     )
     print(f" Dwell Engine:     {dwell_status}")
+    if config.screen.validation_target_width_px is not None and config.screen.validation_target_height_px is not None:
+        boundary_str = f"Button Box ({config.screen.validation_target_width_px:.0f}x{config.screen.validation_target_height_px:.0f} px)"
+    elif config.screen.validation_target_radius_px is not None:
+        boundary_str = f"Target Circle (radius {config.screen.validation_target_radius_px:.1f} px)"
+    else:
+        boundary_str = "Rendered Circle (22 display px / ~33 px)"
+    print(f" Target Boundary:  {boundary_str}")
     print(" Controls:         's' = Calib+Val | 't' = Val | 'd' = Dwell | '1'-'4' = AAC Targets | 'x' = Reset Dwell | 'q'/ESC = Exit")
     print("=" * 65 + "\n")
 
