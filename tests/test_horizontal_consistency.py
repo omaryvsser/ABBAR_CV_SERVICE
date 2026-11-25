@@ -216,13 +216,12 @@ def test_visualizer_mirror_and_non_mirror_preserve_interface_and_simulated_scree
     assert out_unmirrored[340:380, 340:400, 0].mean() > 200
     assert out_unmirrored[340:380, 880:940, 0].mean() < 30
 
-    # Target overlay (0.90, 0.50) must be painted on window RIGHT (~1152, 360) in BOTH modes,
-    # NOT on the mirrored wrong LEFT (~128, 360).
-    tx_expected, ty_expected = CVVisualizer.interface_to_window_point(
-        0.90, 0.50, w, h, margin_x=30, margin_top=130, margin_bottom=50
-    )
-    assert tx_expected == int(round(0.90 * w))
-    tx_wrong = int(round(0.10 * w))
+    # Target overlay (0.90, 0.50) must be painted on window RIGHT in BOTH modes,
+    # NOT on the mirrored wrong LEFT.
+    tx_expected, ty_expected = CVVisualizer.interface_to_window_point(0.90, 0.50, w, h)
+    tx_wrong, _ = CVVisualizer.interface_to_window_point(0.10, 0.50, w, h)
+    assert tx_expected > w * 0.80
+    assert tx_wrong < w * 0.20
 
     for out_img, mode in [(out_mirrored, "mirrored"), (out_unmirrored, "non-mirrored")]:
         right_patch = out_img[ty_expected - 15:ty_expected + 15, tx_expected - 15:tx_expected + 15]

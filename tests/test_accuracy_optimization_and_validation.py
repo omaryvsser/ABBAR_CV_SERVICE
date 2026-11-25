@@ -301,7 +301,15 @@ def test_compact_models_prevent_overfitting_on_noisy_9_targets() -> None:
     assert "candidate_benchmarks" in report
     assert report["selection_basis"] == "loocv"
     assert "mean_euclidean_pixels" in report[f"{selected.model_type}_metrics"]
-    assert selected.model_type in ("compact_linear", "compact_polynomial", "linear", "polynomial")
+    assert selected.model_type in (
+        "pure_decoupled_linear",
+        "decoupled_linear",
+        "decoupled_polynomial",
+        "compact_linear",
+        "compact_polynomial",
+        "linear",
+        "polynomial",
+    )
     loocv_px = report["selected_eval_metrics"]["mean_euclidean_pixels"]
     assert loocv_px < 120.0
 

@@ -112,6 +112,10 @@ class ValidationTrialRecord:
     trial_status: str = "VALID"  # "VALID", "REJECTED", "CANCELLED"
     rejection_reason: Optional[str] = None
     session_id: str = ""
+    raw_x: Optional[float] = None
+    raw_y: Optional[float] = None
+    head_yaw: Optional[float] = None
+    head_pitch: Optional[float] = None
 
     def __post_init__(self) -> None:
         if self.error_x is not None:
@@ -167,6 +171,10 @@ class ValidationTrialRecord:
             "trial_duration_sec": round(self.trial_duration_sec, 2),
             "trial_status": self.trial_status,
             "rejection_reason": self.rejection_reason or "",
+            "raw_x": round(self.raw_x, 4) if self.raw_x is not None else None,
+            "raw_y": round(self.raw_y, 4) if self.raw_y is not None else None,
+            "head_yaw": round(self.head_yaw, 2) if self.head_yaw is not None else None,
+            "head_pitch": round(self.head_pitch, 2) if self.head_pitch is not None else None,
             "timestamp": round(self.timestamp, 4),
         }
 
@@ -432,9 +440,15 @@ class ScreenValidator:
         max_interframe_step: float = 0.050,
         max_head_motion_step: float = 4.0,
         allow_target_retry: bool = False,
+        initial_settling_duration: Optional[float] = None,
     ) -> None:
         self.base_targets = list(targets or DEFAULT_VALIDATION_TARGETS)
         self.settling_duration = max(0.01, settling_duration)
+        self.initial_settling_duration = (
+            max(0.01, float(initial_settling_duration))
+            if initial_settling_duration is not None
+            else (max(1.2, self.settling_duration * 1.5) if self.settling_duration >= 0.5 else self.settling_duration)
+        )
         self.collection_duration = max(0.01, collection_duration)
         self.min_samples_per_target = max(1, min_samples_per_target)
         self.max_collection_timeout = (
@@ -491,10 +505,12 @@ class ScreenValidator:
 
         # Sample collection and fixation stability buffers
         self._active_target_samples: List[np.ndarray] = []
+        self._active_raw_xy: List[Tuple[float, float]] = []
         self._active_rejected_samples_count: int = 0
         self._active_rejection_reasons: Dict[str, int] = {}
         self._recent_raw_xy: List[Tuple[float, float]] = []
         self._prev_pose_yp: Optional[Tuple[float, float]] = None
+        self._post_instability_cooldown: int = 0
         self._trial_records: List[ValidationTrialRecord] = []
         self.summary: Optional[AccuracySummary] = None
 
@@ -548,10 +564,12 @@ class ScreenValidator:
         self.retried_trials.clear()
         self._trial_records.clear()
         self._active_target_samples.clear()
+        self._active_raw_xy.clear()
         self._active_rejected_samples_count = 0
         self._active_rejection_reasons.clear()
         self._recent_raw_xy.clear()
         self._prev_pose_yp = None
+        self._post_instability_cooldown = 0
         self.summary = None
         self._build_trial_sequence()
         self._enter_target(0)
@@ -586,10 +604,12 @@ class ScreenValidator:
         self.target_phase = ValidationPhase.SETTLING
         self.phase_start_time = time.time()
         self._active_target_samples.clear()
+        self._active_raw_xy.clear()
         self._active_rejected_samples_count = 0
         self._active_rejection_reasons.clear()
         self._recent_raw_xy.clear()
         self._prev_pose_yp = None
+        self._post_instability_cooldown = 0
         target = self._trial_sequence[target_idx]
         self.fixation_status = "SETTLING"
         self.fixation_feedback = f"Look at Validation Target {target_idx + 1}/{len(self._trial_sequence)} ({target.name})"
@@ -659,7 +679,12 @@ class ScreenValidator:
 
         # 1. Settling Phase
         if self.target_phase == ValidationPhase.SETTLING:
-            if elapsed >= self.settling_duration:
+            target_settle = (
+                self.initial_settling_duration
+                if self.current_target_index == 0
+                else self.settling_duration
+            )
+            if elapsed >= target_settle:
                 self.target_phase = ValidationPhase.COLLECTING
                 self.phase_start_time = now
                 self._recent_raw_xy.clear()
@@ -690,16 +715,19 @@ class ScreenValidator:
             self.fixation_status = "NO_EYE_TRACKING"
             self.fixation_feedback = "Blink detected — keep eyes open on target"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif not eye_features.is_valid:
             sample_rejection_cause = "INVALID_EYE_LANDMARKS"
             self.fixation_status = "NO_EYE_TRACKING"
             self.fixation_feedback = "Eyes not detected clearly — face camera"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif eye_features.confidence < 0.40:
             sample_rejection_cause = f"LOW_CONFIDENCE_{eye_features.confidence:.2f}"
             self.fixation_status = "LOW_CONFIDENCE"
             self.fixation_feedback = "Low eye tracking confidence — look directly at target"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif (eye_features.right_eye and eye_features.right_eye.openness < 0.25) or (
             eye_features.left_eye and eye_features.left_eye.openness < 0.25
         ):
@@ -707,6 +735,7 @@ class ScreenValidator:
             self.fixation_status = "PARTIAL_CLOSURE"
             self.fixation_feedback = "Open eyes wider to complete validation"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif head_pose and head_pose.is_valid and (
             abs(head_pose.yaw) > 25.0 or abs(head_pose.pitch) > 20.0
         ):
@@ -714,15 +743,18 @@ class ScreenValidator:
             self.fixation_status = "HEAD_MOVEMENT_HIGH"
             self.fixation_feedback = "Head rotated too far — face screen center"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif head_motion_bad:
             sample_rejection_cause = "HEAD_MOVEMENT_UNSTABLE"
             self.fixation_status = "HEAD_MOVEMENT_HIGH"
             self.fixation_feedback = "Hold head steady while fixating"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif features is None or eye_features.combined_horizontal_ratio is None or eye_features.combined_vertical_ratio is None:
             sample_rejection_cause = "FEATURE_EXTRACTION_FAILED"
             self.fixation_status = "NO_EYE_TRACKING"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         else:
             rx = float(eye_features.combined_horizontal_ratio)
             ry = float(eye_features.combined_vertical_ratio)
@@ -733,16 +765,30 @@ class ScreenValidator:
                     self.fixation_status = "UNSTABLE_FIXATION"
                     self.fixation_feedback = "Eyes moving — hold gaze steady on target"
                     self._recent_raw_xy = [(rx, ry)]
+                    self._post_instability_cooldown = 2
             if sample_rejection_cause is None:
                 self._recent_raw_xy.append((rx, ry))
                 if len(self._recent_raw_xy) > 6:
                     self._recent_raw_xy.pop(0)
-                if len(self._recent_raw_xy) >= 4:
+                if self._post_instability_cooldown > 0:
+                    self._post_instability_cooldown -= 1
+                    sample_rejection_cause = "POST_JUMP_STABILIZING"
+                    self.fixation_status = "UNSTABLE_FIXATION"
+                    self.fixation_feedback = "Re-acquiring steady gaze on target..."
+                elif len(self._recent_raw_xy) >= 4:
                     arr_w = np.array(self._recent_raw_xy, dtype=np.float64)
                     if float(np.std(arr_w[:, 0])) > self.fixation_max_std or float(np.std(arr_w[:, 1])) > self.fixation_max_std:
                         sample_rejection_cause = "FIXATION_UNSTABLE_DISPERSION"
                         self.fixation_status = "UNSTABLE_FIXATION"
                         self.fixation_feedback = "Hold gaze steady on target dot"
+                if sample_rejection_cause is None and len(self._active_raw_xy) >= 4:
+                    med_x = float(np.median([p[0] for p in self._active_raw_xy]))
+                    med_y = float(np.median([p[1] for p in self._active_raw_xy]))
+                    cluster_tol = max(0.06, 3.0 * self.fixation_max_std)
+                    if math.hypot(rx - med_x, ry - med_y) > cluster_tol:
+                        sample_rejection_cause = "FIXATION_OUTLIER_DRIFT"
+                        self.fixation_status = "UNSTABLE_FIXATION"
+                        self.fixation_feedback = "Gaze drifted from target — hold on dot"
                 if sample_rejection_cause is None:
                     is_sample_valid = True
                     self.fixation_status = "FIXATION_STEADY"
@@ -752,6 +798,10 @@ class ScreenValidator:
 
         if is_sample_valid and features is not None:
             self._active_target_samples.append(features)
+            if eye_features.combined_horizontal_ratio is not None and eye_features.combined_vertical_ratio is not None:
+                self._active_raw_xy.append(
+                    (float(eye_features.combined_horizontal_ratio), float(eye_features.combined_vertical_ratio))
+                )
         else:
             self._active_rejected_samples_count += 1
             if sample_rejection_cause:
@@ -835,7 +885,20 @@ class ScreenValidator:
         if is_valid and len(self._active_target_samples) > 0:
             samples_arr = np.array(self._active_target_samples)
 
-            # Robust aggregation: Trimmed Median (reject outer 10% outliers per dimension)
+            # 1. Spatial MAD outlier pruning if paired raw coordinates exist
+            if len(samples_arr) >= 6 and len(self._active_raw_xy) == len(samples_arr):
+                raw_arr = np.array(self._active_raw_xy, dtype=np.float64)
+                med_rx = float(np.median(raw_arr[:, 0]))
+                med_ry = float(np.median(raw_arr[:, 1]))
+                mad_x = 1.4826 * float(np.median(np.abs(raw_arr[:, 0] - med_rx)))
+                mad_y = 1.4826 * float(np.median(np.abs(raw_arr[:, 1] - med_ry)))
+                tol_x = max(0.025, 3.0 * mad_x)
+                tol_y = max(0.025, 3.0 * mad_y)
+                spat_mask = (np.abs(raw_arr[:, 0] - med_rx) <= tol_x) & (np.abs(raw_arr[:, 1] - med_ry) <= tol_y)
+                if int(np.sum(spat_mask)) >= max(4, min(self.min_samples_per_target, len(samples_arr) // 2)):
+                    samples_arr = samples_arr[spat_mask]
+
+            # 2. Robust aggregation: Trimmed Median (reject outer 10% outliers per dimension)
             if len(samples_arr) >= 5:
                 p10 = np.percentile(samples_arr, 10, axis=0)
                 p90 = np.percentile(samples_arr, 90, axis=0)
@@ -845,6 +908,10 @@ class ScreenValidator:
                 clean_samples = samples_arr
 
             median_features = np.median(clean_samples, axis=0)
+            raw_x_val = float(median_features[0])
+            raw_y_val = float(median_features[1])
+            yaw_val = float(median_features[8] * 30.0) if len(median_features) >= 10 else None
+            pitch_val = float(median_features[9] * 20.0) if len(median_features) >= 10 else None
 
             assert self.mapper is not None
             pred = self.mapper.predict(median_features)
@@ -870,6 +937,7 @@ class ScreenValidator:
             status = "VALID"
             reason = None
         else:
+            raw_x_val, raw_y_val, yaw_val, pitch_val = None, None, None, None
             pred_x, pred_y = None, None
             err_x, err_y = None, None
             abs_x, abs_y = None, None
@@ -905,6 +973,10 @@ class ScreenValidator:
             error_pct_diagonal=e_pct,
             target_hit=is_hit,
             target_boundary=boundary_spec,
+            raw_x=raw_x_val,
+            raw_y=raw_y_val,
+            head_yaw=yaw_val,
+            head_pitch=pitch_val,
             screen_width=self.screen_width,
             screen_height=self.screen_height,
             tracking_quality=quality,

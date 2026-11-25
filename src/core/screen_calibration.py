@@ -222,9 +222,15 @@ class ScreenCalibrator:
         max_interframe_step: float = 0.045,
         max_head_motion_step: float = 4.0,
         allow_target_retry: bool = True,
+        initial_settling_duration: Optional[float] = None,
     ) -> None:
         self.targets = list(targets or DEFAULT_9_TARGETS)
         self.settling_duration = max(0.01, settling_duration)
+        self.initial_settling_duration = (
+            max(0.01, float(initial_settling_duration))
+            if initial_settling_duration is not None
+            else (max(1.2, self.settling_duration * 1.5) if self.settling_duration >= 0.5 else self.settling_duration)
+        )
         self.collection_duration = max(0.01, collection_duration)
         self.min_samples_per_target = max(1, min_samples_per_target)
         self.max_collection_timeout = max(self.collection_duration + 0.5, max_collection_timeout)
@@ -255,6 +261,7 @@ class ScreenCalibrator:
         # Fixation stability buffers
         self._recent_raw_xy: List[Tuple[float, float]] = []
         self._prev_pose_yp: Optional[Tuple[float, float]] = None
+        self._post_instability_cooldown: int = 0
 
         # Data store
         self.all_samples: List[CalibrationSampleRecord] = []
@@ -344,6 +351,7 @@ class ScreenCalibrator:
         self.phase_start_time = time.time()
         self._recent_raw_xy.clear()
         self._prev_pose_yp = None
+        self._post_instability_cooldown = 0
         self.error_message = None
         target = self.targets[target_idx]
         self.fixation_status = "SETTLING"
@@ -393,7 +401,12 @@ class ScreenCalibrator:
 
         # 1. Check phase transitions
         if self.target_phase == TargetPhase.SETTLING:
-            if elapsed >= self.settling_duration:
+            target_settle = (
+                self.initial_settling_duration
+                if self.current_target_index == 0
+                else self.settling_duration
+            )
+            if elapsed >= target_settle:
                 self.target_phase = TargetPhase.COLLECTING
                 self.phase_start_time = now
                 self._recent_raw_xy.clear()
@@ -426,16 +439,19 @@ class ScreenCalibrator:
             self.fixation_status = "NO_EYE_TRACKING"
             self.fixation_feedback = "Blink detected — keep eyes open on target"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif not eye_features.is_valid:
             rejection_reason = "INVALID_EYE_LANDMARKS"
             self.fixation_status = "NO_EYE_TRACKING"
             self.fixation_feedback = "Eyes not detected clearly — face camera"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif eye_features.confidence < 0.40:
             rejection_reason = f"LOW_CONFIDENCE_{eye_features.confidence:.2f}"
             self.fixation_status = "LOW_CONFIDENCE"
             self.fixation_feedback = "Low eye tracking confidence — look straight at target"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif (eye_features.right_eye and eye_features.right_eye.openness < 0.25) or (
             eye_features.left_eye and eye_features.left_eye.openness < 0.25
         ):
@@ -443,6 +459,7 @@ class ScreenCalibrator:
             self.fixation_status = "PARTIAL_CLOSURE"
             self.fixation_feedback = "Open eyes wider to improve fixation quality"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif head_pose and head_pose.is_valid and (
             abs(head_pose.yaw) > 25.0 or abs(head_pose.pitch) > 20.0
         ):
@@ -450,15 +467,18 @@ class ScreenCalibrator:
             self.fixation_status = "HEAD_MOVEMENT_HIGH"
             self.fixation_feedback = "Turn head back toward center — keep head still"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif head_motion_bad:
             rejection_reason = "HEAD_MOVEMENT_UNSTABLE"
             self.fixation_status = "HEAD_MOVEMENT_HIGH"
             self.fixation_feedback = "Keep head still during target fixation"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         elif features is None or eye_features.combined_horizontal_ratio is None or eye_features.combined_vertical_ratio is None:
             rejection_reason = "FEATURE_EXTRACTION_FAILED"
             self.fixation_status = "NO_EYE_TRACKING"
             self._recent_raw_xy.clear()
+            self._post_instability_cooldown = 2
         else:
             rx = float(eye_features.combined_horizontal_ratio)
             ry = float(eye_features.combined_vertical_ratio)
@@ -469,16 +489,34 @@ class ScreenCalibrator:
                     self.fixation_status = "UNSTABLE_FIXATION"
                     self.fixation_feedback = "Hold eyes steady on target dot"
                     self._recent_raw_xy = [(rx, ry)]
+                    self._post_instability_cooldown = 2
             if rejection_reason is None:
                 self._recent_raw_xy.append((rx, ry))
                 if len(self._recent_raw_xy) > 6:
                     self._recent_raw_xy.pop(0)
-                if len(self._recent_raw_xy) >= 4:
+                if self._post_instability_cooldown > 0:
+                    self._post_instability_cooldown -= 1
+                    rejection_reason = "POST_JUMP_STABILIZING"
+                    self.fixation_status = "UNSTABLE_FIXATION"
+                    self.fixation_feedback = "Re-acquiring steady gaze on target..."
+                elif len(self._recent_raw_xy) >= 4:
                     arr_w = np.array(self._recent_raw_xy, dtype=np.float64)
                     if float(np.std(arr_w[:, 0])) > self.fixation_max_std or float(np.std(arr_w[:, 1])) > self.fixation_max_std:
                         rejection_reason = "FIXATION_UNSTABLE_DISPERSION"
                         self.fixation_status = "UNSTABLE_FIXATION"
                         self.fixation_feedback = "Hold gaze steady on target — reduce eye wander"
+                if rejection_reason is None:
+                    prior_accepted = self._target_samples.get(target.target_id, [])
+                    if len(prior_accepted) >= 4:
+                        prior_xy = [(r.raw_x, r.raw_y) for r in prior_accepted if r.raw_x is not None and r.raw_y is not None]
+                        if len(prior_xy) >= 4:
+                            med_x = float(np.median([p[0] for p in prior_xy]))
+                            med_y = float(np.median([p[1] for p in prior_xy]))
+                            cluster_tol = max(0.06, 3.0 * self.fixation_max_std)
+                            if math.hypot(rx - med_x, ry - med_y) > cluster_tol:
+                                rejection_reason = "FIXATION_OUTLIER_DRIFT"
+                                self.fixation_status = "UNSTABLE_FIXATION"
+                                self.fixation_feedback = "Gaze drifted from target — focus on center dot"
                 if rejection_reason is None:
                     accepted = True
                     tracking_quality = "EXCELLENT" if eye_features.confidence >= 0.70 else "GOOD"
@@ -577,9 +615,47 @@ class ScreenCalibrator:
                 logger.error(self.error_message)
                 return None
 
-            feat_matrix = np.array([r.features for r in accepted_records if r.features is not None])
+            valid_recs = [r for r in accepted_records if r.features is not None]
+            clean_recs = list(valid_recs)
+            min_keep = max(4, min(self.min_samples_per_target, max(1, len(valid_recs) // 2)))
 
-            # Robust aggregation: Trimmed Median (reject outer 10% extreme frames across features)
+            # 1. Spatial MAD outlier pruning around target fixation cluster median
+            if len(clean_recs) >= 6:
+                coords = [(r.raw_x, r.raw_y) for r in clean_recs]
+                if all(c[0] is not None and c[1] is not None for c in coords):
+                    rx_arr = np.array([float(c[0]) for c in coords], dtype=np.float64)
+                    ry_arr = np.array([float(c[1]) for c in coords], dtype=np.float64)
+                    med_rx = float(np.median(rx_arr))
+                    med_ry = float(np.median(ry_arr))
+                    mad_x = 1.4826 * float(np.median(np.abs(rx_arr - med_rx)))
+                    mad_y = 1.4826 * float(np.median(np.abs(ry_arr - med_ry)))
+                    tol_x = max(0.025, 3.0 * mad_x)
+                    tol_y = max(0.025, 3.0 * mad_y)
+                    spat_inliers = [
+                        r for r, x_v, y_v in zip(clean_recs, rx_arr, ry_arr)
+                        if abs(x_v - med_rx) <= tol_x and abs(y_v - med_ry) <= tol_y
+                    ]
+                    if len(spat_inliers) >= min_keep:
+                        clean_recs = spat_inliers
+
+            # 2. Modest target-cluster head pose outlier pruning (+-6 deg from target median)
+            if len(clean_recs) >= 6:
+                pose_recs = [r for r in clean_recs if r.yaw is not None and r.pitch is not None]
+                if len(pose_recs) >= min_keep:
+                    med_yaw = float(np.median([float(r.yaw) for r in pose_recs]))
+                    med_pitch = float(np.median([float(r.pitch) for r in pose_recs]))
+                    pose_inliers = [
+                        r for r in clean_recs
+                        if (r.yaw is None or r.pitch is None)
+                        or (abs(float(r.yaw) - med_yaw) <= 6.0 and abs(float(r.pitch) - med_pitch) <= 6.0)
+                    ]
+                    if len(pose_inliers) >= min_keep:
+                        clean_recs = pose_inliers
+
+            outlier_pruned_count = max(0, len(valid_recs) - len(clean_recs))
+            feat_matrix = np.array([r.features for r in clean_recs])
+
+            # 3. Robust aggregation: Trimmed Median (reject outer 10% extreme frames across features)
             if len(feat_matrix) >= 6:
                 p10 = np.percentile(feat_matrix, 10, axis=0)
                 p90 = np.percentile(feat_matrix, 90, axis=0)
@@ -597,10 +673,10 @@ class ScreenCalibrator:
                 if not rec.accepted and rec.rejection_reason:
                     rej_counts[rec.rejection_reason] = rej_counts.get(rec.rejection_reason, 0) + 1
 
-            raw_xs = [r.raw_x for r in accepted_records if r.raw_x is not None]
-            raw_ys = [r.raw_y for r in accepted_records if r.raw_y is not None]
-            yaws = [r.yaw for r in accepted_records if r.yaw is not None]
-            pitches = [r.pitch for r in accepted_records if r.pitch is not None]
+            raw_xs = [r.raw_x for r in clean_recs if r.raw_x is not None]
+            raw_ys = [r.raw_y for r in clean_recs if r.raw_y is not None]
+            yaws = [r.yaw for r in clean_recs if r.yaw is not None]
+            pitches = [r.pitch for r in clean_recs if r.pitch is not None]
             per_target_stats.append({
                 "target_id": target.target_id,
                 "name": target.name,
@@ -608,6 +684,8 @@ class ScreenCalibrator:
                 "y": target.y,
                 "collected_samples": len(all_target_records),
                 "accepted_samples": len(accepted_records),
+                "clean_samples": len(clean_recs),
+                "outlier_pruned_samples": outlier_pruned_count,
                 "rejected_samples": max(0, len(all_target_records) - len(accepted_records)),
                 "retried_count": self.retried_targets.get(target.target_id, 0),
                 "rejection_breakdown": rej_counts,
@@ -625,7 +703,14 @@ class ScreenCalibrator:
         y_train = np.array(y_rows, dtype=np.float64)
 
         m_type_req = self.model_type.strip().lower()
-        if m_type_req in ("linear", "polynomial", "compact_linear", "compact_polynomial"):
+        if m_type_req in (
+            "linear",
+            "polynomial",
+            "compact_linear",
+            "compact_polynomial",
+            "decoupled_linear",
+            "decoupled_polynomial",
+        ):
             mapper = create_mapper(
                 m_type_req, ridge_alpha=self.ridge_alpha, use_scaler=self.normalize_features
             ).fit(X_train, y_train)

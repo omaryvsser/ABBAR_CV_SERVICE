@@ -165,6 +165,24 @@ def parse_args() -> argparse.Namespace:
         help="Randomize validation target presentation order to avoid sequential bias",
     )
     parser.add_argument(
+        "--target-radius-px",
+        type=float,
+        default=None,
+        help="Optional validation circular hit boundary radius in screen pixels (default: rendered 22px circle)",
+    )
+    parser.add_argument(
+        "--target-width-px",
+        type=float,
+        default=None,
+        help="Optional AAC button hit boundary width in screen pixels (pair with --target-height-px)",
+    )
+    parser.add_argument(
+        "--target-height-px",
+        type=float,
+        default=None,
+        help="Optional AAC button hit boundary height in screen pixels (pair with --target-width-px)",
+    )
+    parser.add_argument(
         "--compare-experiments",
         type=str,
         nargs="+",
@@ -283,6 +301,12 @@ def main() -> int:
         config.screen.validation_repeats = args.validation_repeats
     if args.randomize_val_targets:
         config.screen.randomize_validation = True
+    if args.target_radius_px is not None:
+        config.screen.validation_target_radius_px = args.target_radius_px
+    if args.target_width_px is not None:
+        config.screen.validation_target_width_px = args.target_width_px
+    if args.target_height_px is not None:
+        config.screen.validation_target_height_px = args.target_height_px
 
     model_file = Path(config.landmarker.model_path)
     if not model_file.exists():

@@ -148,8 +148,12 @@ class CVVisualizer:
         if calibrator_progress is not None and calibrator_progress < 1.0:
             self._draw_calibration_overlay(canvas, calibrator_progress, w, h)
 
-        # 6b. Phase 3: 9-Point Screen Calibration Target Overlay
-        if screen_calibrator is not None and screen_calibrator.is_active:
+        # 6b. Phase 3: 9-Point Screen Calibration / Validation Target Overlay
+        is_calib_active = bool(screen_calibrator is not None and screen_calibrator.is_active)
+        is_val_active = bool(screen_validator is not None and screen_validator.is_active)
+        is_screen_task_active = is_calib_active or is_val_active
+
+        if is_calib_active:
             c_idx = getattr(screen_calibrator, "current_target_index", 0) + 1
             c_tot = max(1, len(getattr(screen_calibrator, "targets", [])))
             self._draw_screen_target_overlay(
@@ -166,7 +170,7 @@ class CVVisualizer:
                 feedback_text=getattr(screen_calibrator, "fixation_feedback", ""),
                 fixation_status=getattr(screen_calibrator, "fixation_status", ""),
             )
-        elif screen_validator is not None and screen_validator.is_active:
+        elif is_val_active:
             v_idx = getattr(screen_validator, "current_target_index", 0) + 1
             v_tot = max(1, len(getattr(screen_validator, "targets", [])))
             self._draw_screen_target_overlay(
@@ -185,14 +189,13 @@ class CVVisualizer:
                 feedback_text=getattr(screen_validator, "fixation_feedback", ""),
                 fixation_status=getattr(screen_validator, "fixation_status", ""),
             )
-            self._draw_validation_dashboard(canvas, screen_validator, w, h)
         elif (
             (screen_validator is not None and getattr(screen_validator, "summary", None) is not None)
             or (screen_calibrator is not None and getattr(screen_calibrator, "is_completed", False))
         ):
             self._draw_post_session_results_panel(canvas, screen_calibrator, screen_validator, w, h)
 
-        # 7. Top Information HUD (4 Rows)
+        # 7. Top Information HUD (compact single-strip during active calibration/validation)
         self._draw_hud(
             canvas,
             detection_result,
@@ -212,16 +215,39 @@ class CVVisualizer:
             screen_validator=screen_validator,
         )
 
-        # 8. Bottom-Right 2D Gaze Tracking Radar
-        if self.config.draw_gaze_crosshair:
-            raw_x = eye_features.combined_horizontal_ratio
-            raw_y = eye_features.combined_vertical_ratio
-            self._draw_gaze_radar(canvas, raw_x, raw_y, smoothed_x, smoothed_y, baseline, w, h)
+        # Keep bottom-corner widgets hidden during active calibration/validation so all 9 targets remain clear
+        if not is_screen_task_active:
+            # 8. Bottom-Right 2D Gaze Tracking Radar
+            if self.config.draw_gaze_crosshair:
+                raw_x = eye_features.combined_horizontal_ratio
+                raw_y = eye_features.combined_vertical_ratio
+                self._draw_gaze_radar(canvas, raw_x, raw_y, smoothed_x, smoothed_y, baseline, w, h)
 
-        # 9. Bottom-Left Simulated Screen Gaze Widget (Phase 3)
-        self._draw_screen_gaze_widget(canvas, screen_gaze, screen_calibrator, screen_validator, w, h)
+            # 9. Bottom-Left Simulated Screen Gaze Widget (Phase 3)
+            self._draw_screen_gaze_widget(canvas, screen_gaze, screen_calibrator, screen_validator, w, h)
 
         return canvas
+
+    @staticmethod
+    def compute_visible_content_rect(
+        w: int,
+        h: int,
+        margin_x: Optional[int] = None,
+        margin_top: Optional[int] = None,
+        margin_bottom: Optional[int] = None,
+    ) -> Tuple[int, int, int, int]:
+        """
+        Return (left, top, right, bottom) visible interface content rectangle clear of
+        the compact calibration/validation top HUD (42 px) and bottom bar (24 px).
+        """
+        mx = max(24, int(round(w * 0.04))) if margin_x is None else max(0, int(margin_x))
+        mt = max(56, int(round(h * 0.08))) if margin_top is None else max(0, int(margin_top))
+        mb = max(36, int(round(h * 0.05))) if margin_bottom is None else max(0, int(margin_bottom))
+        left = min(mx, max(0, w - 1))
+        top = min(mt, max(0, h - 1))
+        right = max(left, w - mx - 1)
+        bottom = max(top, h - mb - 1)
+        return left, top, right, bottom
 
     @staticmethod
     def interface_to_window_point(
@@ -229,21 +255,28 @@ class CVVisualizer:
         norm_y: float,
         w: int,
         h: int,
-        margin_x: int = 0,
-        margin_top: int = 0,
-        margin_bottom: int = 0,
+        margin_x: Optional[int] = None,
+        margin_top: Optional[int] = None,
+        margin_bottom: Optional[int] = None,
     ) -> Tuple[int, int]:
         """
-        Map normalized patient-interface coordinates (gaze_x, gaze_y) in [0.0, 1.0]
-        to display window pixels WITHOUT horizontal camera mirroring.
+        Proportionally map normalized patient-interface coordinates (norm_x, norm_y)
+        in [0.0, 1.0] into the explicit visible content rectangle WITHOUT horizontal
+        camera mirroring or hard clipping collapse between nearby rows.
 
         Convention:
-        - norm_x = 0.0 -> Left side of window/interface
-        - norm_x = 1.0 -> Right side of window/interface
-        - norm_y = 0.0 -> Top, norm_y = 1.0 -> Bottom
+        - norm_x = 0.0 -> Left boundary of visible content area
+        - norm_x = 1.0 -> Right boundary of visible content area
+        - norm_y = 0.0 -> Top boundary of visible content area
+        - norm_y = 1.0 -> Bottom boundary of visible content area
         """
-        px = int(np.clip(round(norm_x * w), margin_x, max(margin_x, w - margin_x - 1)))
-        py = int(np.clip(round(norm_y * h), margin_top, max(margin_top, h - margin_bottom - 1)))
+        left, top, right, bottom = CVVisualizer.compute_visible_content_rect(
+            w, h, margin_x=margin_x, margin_top=margin_top, margin_bottom=margin_bottom
+        )
+        nx = float(np.clip(norm_x, 0.0, 1.0))
+        ny = float(np.clip(norm_y, 0.0, 1.0))
+        px = int(round(left + nx * float(right - left)))
+        py = int(round(top + ny * float(bottom - top)))
         return px, py
 
     @staticmethod
@@ -434,14 +467,10 @@ class CVVisualizer:
         screen_validator: Optional[Any] = None,
     ) -> None:
         """Render high-contrast top overlay banner with real-time stats."""
-        banner_h = 118
-        overlay = img[:banner_h, :w].copy()
-        cv2.rectangle(img, (0, 0), (w, banner_h), self.COLOR_HUD_BG, -1)
-        cv2.addWeighted(img[:banner_h, :w], 0.78, overlay, 0.22, 0, img[:banner_h, :w])
-
         font = cv2.FONT_HERSHEY_SIMPLEX
+        is_calib_active = bool(screen_calibrator is not None and screen_calibrator.is_active)
+        is_val_active = bool(screen_validator is not None and screen_validator.is_active)
 
-        # Row 1: Detection Status & Tracking State pill
         state_str = tracking_state.value if tracking_state else ("TRACKING" if detection.has_face else "NO_FACE")
         if state_str == "TRACKING":
             status_color = self.COLOR_STATUS_OK
@@ -452,6 +481,82 @@ class CVVisualizer:
         else:
             status_color = self.COLOR_STATUS_WARN
 
+        # Compact HUD strip during active calibration/validation so all 9 targets remain 100% clear
+        if is_calib_active or is_val_active:
+            compact_h = min(42, h)
+            overlay = img[:compact_h, :w].copy()
+            cv2.rectangle(img, (0, 0), (w, compact_h), self.COLOR_HUD_BG, -1)
+            cv2.addWeighted(img[:compact_h, :w], 0.80, overlay, 0.20, 0, img[:compact_h, :w])
+            cv2.line(img, (0, compact_h), (w, compact_h), (50, 70, 90), 1)
+
+            cv2.circle(img, (18, 21), 5, status_color, -1, lineType=cv2.LINE_AA)
+            if is_calib_active:
+                c_idx = getattr(screen_calibrator, "current_target_index", 0) + 1
+                c_tot = max(1, len(getattr(screen_calibrator, "targets", [])))
+                c_phase = screen_calibrator.target_phase.value
+                task_str = f"CALIB [{c_idx}/{c_tot}] {c_phase}"
+                task_color = (0, 220, 255)
+            else:
+                v_idx = getattr(screen_validator, "current_target_index", 0) + 1
+                v_tot = max(1, len(getattr(screen_validator, "targets", [])))
+                v_phase = screen_validator.target_phase.value
+                task_str = f"VALID [{v_idx}/{v_tot}] {v_phase}"
+                task_color = (0, 165, 255)
+
+            cv2.putText(img, task_str, (32, 26), font, 0.48, task_color, 2, cv2.LINE_AA)
+
+            blink_flag = bool(
+                (eyes.left_eye and eyes.left_eye.is_blink) or (eyes.right_eye and eyes.right_eye.is_blink)
+            )
+            pose_bits = []
+            if blink_flag:
+                pose_bits.append("BLINK")
+            if not detection.has_face:
+                pose_bits.append("NO_FACE")
+            if self.config.draw_head_pose and head_pose and head_pose.is_valid:
+                pose_bits.append(f"Head Y:{head_pose.yaw:+.1f} P:{head_pose.pitch:+.1f}")
+            mid_x = max(250, w // 3)
+            if pose_bits:
+                mid_color = (0, 255, 255) if (blink_flag or not detection.has_face) else (180, 220, 240)
+                cv2.putText(img, " | ".join(pose_bits), (mid_x, 26), font, 0.42, mid_color, 1, cv2.LINE_AA)
+
+            cam_tag = "MIRROR" if self.config.mirror_display else "RAW"
+            fps_tag = f" | {fps_metrics.fps:.0f}FPS" if self.config.draw_fps else ""
+            rec_tag = " | REC" if is_recording else ""
+            right_txt = f"{cam_tag}{fps_tag}{rec_tag}"
+            cv2.putText(img, right_txt, (max(mid_x + 170, w - 210), 26), font, 0.40, (200, 220, 220), 1, cv2.LINE_AA)
+
+            # Bottom compact status/controls strip clear of content rect
+            bar_top = max(compact_h + 1, h - 24)
+            sub_b = img[bar_top:h, :w].copy()
+            cv2.rectangle(img, (0, bar_top), (w, h), self.COLOR_HUD_BG, -1)
+            cv2.addWeighted(img[bar_top:h, :w], 0.80, sub_b, 0.20, 0, img[bar_top:h, :w])
+
+            if is_val_active and hasattr(screen_validator, "get_live_metrics"):
+                m = screen_validator.get_live_metrics()
+                bottom_str = (
+                    f"Acc:{m.current_accepted_samples} Rej:{m.current_rejected_samples} | "
+                    f"Valid:{m.valid_trials}/{m.total_trials} | Mean:{m.running_mean_error_px:.0f}px | "
+                    f"Hit:{m.pct_target_selection:.0f}% ({m.successful_selections}/{m.valid_trials}) | "
+                    "Keys: 'y'=Retry 'k'=Skip 'q'=Exit"
+                )
+            else:
+                cur_t = getattr(screen_calibrator, "current_target", None) if is_calib_active else None
+                cur_cnt = len(screen_calibrator._target_samples.get(cur_t.target_id, [])) if (cur_t is not None and hasattr(screen_calibrator, "_target_samples")) else 0
+                min_cnt = getattr(screen_calibrator, "min_samples_per_target", 0) if is_calib_active else 0
+                bottom_str = (
+                    f"Samples:{cur_cnt}/{min_cnt} | Look steadily at the active target center | "
+                    "Keys: 'y'=Retry 'c'=Re-center 'q'=Exit"
+                )
+            cv2.putText(img, bottom_str, (16, h - 7), font, 0.38, (185, 210, 225), 1, cv2.LINE_AA)
+            return
+
+        banner_h = 118
+        overlay = img[:banner_h, :w].copy()
+        cv2.rectangle(img, (0, 0), (w, banner_h), self.COLOR_HUD_BG, -1)
+        cv2.addWeighted(img[:banner_h, :w], 0.78, overlay, 0.22, 0, img[:banner_h, :w])
+
+        # Row 1: Detection Status & Tracking State pill
         cv2.circle(img, (20, 22), 6, status_color, -1, lineType=cv2.LINE_AA)
         status_text = f"STATE: [{state_str}]"
         cv2.putText(img, status_text, (35, 27), font, 0.52, status_color, 2, cv2.LINE_AA)
@@ -574,9 +679,11 @@ class CVVisualizer:
             return
 
         _ = mirrored  # Display mirroring applies ONLY to camera frames & facial landmarks.
-        tx, ty = self.interface_to_window_point(
-            target.x, target.y, w, h, margin_x=30, margin_top=130, margin_bottom=50
-        )
+        left, top, right, bottom = self.compute_visible_content_rect(w, h)
+        tx, ty = self.interface_to_window_point(target.x, target.y, w, h)
+
+        # Subtle visible interface boundary frame so user can see active workspace bounds cleanly
+        cv2.rectangle(img, (left, top), (right, bottom), (55, 65, 75), 1)
 
         if phase == "FAILED":
             color_outer = (0, 0, 255)
@@ -585,11 +692,13 @@ class CVVisualizer:
             color_outer = (0, 140, 255) if is_validation else (0, 215, 255)
             color_inner = (0, 255, 255) if is_validation else (0, 255, 128)
 
-        # Render exact actual target boundary matching ScreenValidator geometry
+        # Render exact actual target boundary matching ScreenValidator geometry inside visible content area
         screen_w = getattr(screen_validator, "screen_width", 1920) if screen_validator is not None else 1920
         screen_h = getattr(screen_validator, "screen_height", 1080) if screen_validator is not None else 1080
-        scale_x = float(w) / float(max(1, screen_w))
-        scale_y = float(h) / float(max(1, screen_h))
+        content_w = max(1, right - left)
+        content_h = max(1, bottom - top)
+        scale_x = float(content_w) / float(max(1, screen_w))
+        scale_y = float(content_h) / float(max(1, screen_h))
 
         t_width_px = getattr(target, "width_px", None)
         t_height_px = getattr(target, "height_px", None)
@@ -603,7 +712,7 @@ class CVVisualizer:
             radius_pulse = max(half_w, half_h)
         elif t_radius_px is not None or (is_validation and cfg_radius_px is not None):
             eff_r = t_radius_px if t_radius_px is not None else cfg_radius_px
-            bound_r = int(max(4, round(float(eff_r) * scale_x)))
+            bound_r = int(max(4, round(float(eff_r) * min(scale_x, scale_y))))
             cv2.circle(img, (tx, ty), bound_r, color_outer, 2, lineType=cv2.LINE_AA)
             radius_pulse = bound_r
         else:
@@ -619,11 +728,9 @@ class CVVisualizer:
 
         font = cv2.FONT_HERSHEY_SIMPLEX
 
-        # If in validation mode, render predicted gaze reticle and error vector
+        # If in validation mode, render predicted gaze reticle and error vector inside same content area
         if is_validation and screen_gaze is not None and screen_gaze.gaze_x is not None and screen_gaze.gaze_y is not None:
-            gx, gy = self.interface_to_window_point(
-                screen_gaze.gaze_x, screen_gaze.gaze_y, w, h, margin_x=20, margin_top=20, margin_bottom=20
-            )
+            gx, gy = self.interface_to_window_point(screen_gaze.gaze_x, screen_gaze.gaze_y, w, h)
 
             # Predicted gaze marker (orange diamond + cross)
             cv2.drawMarker(img, (gx, gy), (0, 165, 255), markerType=cv2.MARKER_DIAMOND, markerSize=16, thickness=2, line_type=cv2.LINE_AA)
@@ -642,12 +749,22 @@ class CVVisualizer:
             my = (ty + gy) // 2
             cv2.putText(img, f"Err: {dist_px}px ({dist_norm:.3f})", (mx + 8, my - 6), font, 0.40, (0, 255, 255), 1, cv2.LINE_AA)
 
-        # Target progress & phase banner
+        # Target progress & phase banner with HUD-safe smart placement above/below target
         title_prefix = "VALIDATION" if is_validation else "CALIBRATION"
         label = f"{title_prefix} Target {target_index}/{target_total}: {target.name.upper()} [{phase}]"
-        label_x = int(np.clip(tx - 135, 20, max(20, w - 340)))
-        label_y = max(128, ty - radius_pulse - 10)
-        cv2.putText(img, label, (label_x, label_y), font, 0.45, color_outer, 1, cv2.LINE_AA)
+        label_x = int(np.clip(tx - 135, 16, max(16, w - 340)))
+        prefer_below = (ty - radius_pulse - 26) < top
+        near_bottom = (ty + radius_pulse + 42) > bottom
+        if prefer_below:
+            label_y = ty + radius_pulse + 20
+            fb_y = ty + radius_pulse + 38
+        elif near_bottom:
+            fb_y = ty - radius_pulse - 10
+            label_y = ty - radius_pulse - 28
+        else:
+            label_y = ty - radius_pulse - 10
+            fb_y = ty + radius_pulse + 22
+        cv2.putText(img, label, (label_x, label_y), font, 0.44, color_outer, 1, cv2.LINE_AA)
 
         if feedback_text:
             fb_color = (
@@ -655,8 +772,7 @@ class CVVisualizer:
                 if fixation_status == "FIXATION_STEADY"
                 else ((0, 80, 255) if phase == "FAILED" else (0, 215, 255))
             )
-            fb_y = min(h - 35, ty + radius_pulse + 22)
-            cv2.putText(img, feedback_text, (label_x, fb_y), font, 0.40, fb_color, 1, cv2.LINE_AA)
+            cv2.putText(img, feedback_text, (label_x, fb_y), font, 0.39, fb_color, 1, cv2.LINE_AA)
 
     def _draw_validation_dashboard(
         self,

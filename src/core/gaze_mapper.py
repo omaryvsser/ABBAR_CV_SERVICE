@@ -619,6 +619,216 @@ class PolynomialGazeMapper(BaseGazeMapper):
         return np.hstack(terms)
 
 
+class DecoupledBaseGazeMapper(BaseGazeMapper):
+    """
+    Abstract base class for axis-decoupled gaze-to-screen regression mappers.
+
+    In human visual physiology, horizontal eye movement (adduction / abduction)
+    is driven by the medial/lateral recti and does not alter vertical target gaze.
+    Coupled models fit all 10 features onto Y, creating severe cross-talk (e.g. looking
+    right shifts vertical prediction by hundreds of pixels).
+
+    Decoupled mappers fit:
+      Screen X = f(horizontal_features)
+      Screen Y = g(vertical_features)
+    completely eliminating cross-axis contamination and keeping parameter count
+    strictly within the sample size (2-4 parameters per axis for N=9 targets).
+    """
+
+    @abstractmethod
+    def _transform_x(self, X: np.ndarray) -> np.ndarray:
+        """Transform normalized features X (N, D) into horizontal basis Phi_x (N, K_x)."""
+        pass
+
+    @abstractmethod
+    def _transform_y(self, X: np.ndarray) -> np.ndarray:
+        """Transform normalized features X (N, D) into vertical basis Phi_y (N, K_y)."""
+        pass
+
+    def _transform_features(self, X: np.ndarray) -> np.ndarray:
+        """Combined basis representation for compatibility and inspection."""
+        phi_x = self._transform_x(X)
+        phi_y = self._transform_y(X)
+        return np.hstack([phi_x, phi_y])
+
+    def fit(self, X: Any, y: Any) -> "DecoupledBaseGazeMapper":
+        X_raw, _ = _sanitize_feature_array(X)
+        y_arr = np.asarray(y, dtype=np.float64)
+
+        if y_arr.ndim == 1:
+            y_arr = y_arr.reshape(1, -1)
+
+        N, D = X_raw.shape
+        if N < 2:
+            raise ValueError(f"At least 2 samples required to fit regression mapper, got {N}")
+        if y_arr.shape[0] != N or y_arr.shape[1] != 2:
+            raise ValueError(f"Target matrix y must have shape ({N}, 2), got {y_arr.shape}")
+        if not np.all(np.isfinite(y_arr)):
+            raise ValueError("Target coordinate matrix y contains non-finite values.")
+
+        if len(self.feature_names) != D:
+            self.feature_names = [f"f_{i}" for i in range(D)]
+
+        if self.use_scaler:
+            self.scaler = StandardScaler(feature_names=self.feature_names, z_clip=self.z_clip)
+            X_model = self.scaler.fit_transform(X_raw)
+            self.normalization_method = self.scaler.method
+        else:
+            self.scaler = None
+            self.normalization_method = "None"
+            X_model = np.where(np.isfinite(X_raw), X_raw, 0.0)
+
+        Phi_x = self._transform_x(X_model)  # (N, K_x)
+        Phi_y = self._transform_y(X_model)  # (N, K_y)
+        K_x = Phi_x.shape[1]
+        K_y = Phi_y.shape[1]
+
+        # Fit X axis independently
+        reg_x = self.ridge_alpha * np.eye(K_x, dtype=np.float64)
+        reg_x[0, 0] = 0.0
+        # Prevent head-pose overfitting and double-compensation on small sample sizes (N=9):
+        # When auxiliary head pose is present in the basis (last column for D >= 10),
+        # apply strong differential L2 regularization so head pose cannot overpower ocular ratios.
+        if K_x >= 3 and X_raw.shape[1] >= 10:
+            reg_x[-1, -1] = max(self.ridge_alpha * 25.0, 2.5)
+            if K_x >= 4:
+                # Quadratic term (x^2) regularization to prevent edge flare
+                reg_x[2, 2] = max(self.ridge_alpha * 5.0, 0.5)
+
+        Ax = Phi_x.T @ Phi_x + reg_x
+        bx = Phi_x.T @ y_arr[:, 0]
+        try:
+            wx = np.linalg.solve(Ax, bx)
+        except np.linalg.LinAlgError:
+            wx, _, _, _ = np.linalg.lstsq(Ax, bx, rcond=1e-5)
+
+        # Fit Y axis independently
+        reg_y = self.ridge_alpha * np.eye(K_y, dtype=np.float64)
+        reg_y[0, 0] = 0.0
+        if K_y >= 3 and X_raw.shape[1] >= 10:
+            reg_y[-1, -1] = max(self.ridge_alpha * 25.0, 2.5)
+            if K_y >= 4:
+                # Quadratic term (y^2) regularization to prevent edge flare
+                reg_y[2, 2] = max(self.ridge_alpha * 5.0, 0.5)
+
+        Ay = Phi_y.T @ Phi_y + reg_y
+        by = Phi_y.T @ y_arr[:, 1]
+        try:
+            wy = np.linalg.solve(Ay, by)
+        except np.linalg.LinAlgError:
+            wy, _, _, _ = np.linalg.lstsq(Ay, by, rcond=1e-5)
+
+        if K_x == K_y:
+            self.weights = np.column_stack([wx, wy])
+        else:
+            K_max = max(K_x, K_y)
+            w_mat = np.zeros((K_max, 2), dtype=np.float64)
+            w_mat[:K_x, 0] = wx
+            w_mat[:K_y, 1] = wy
+            self.weights = w_mat
+
+        self.is_fitted = True
+        self.training_sample_count = N
+        return self
+
+    def predict(self, X: Any) -> np.ndarray:
+        if not self.is_fitted or self.weights is None:
+            raise RuntimeError("Cannot predict with unfitted gaze mapper.")
+
+        X_model, single_sample = self.normalize_features(X)
+        Phi_x = self._transform_x(X_model)
+        Phi_y = self._transform_y(X_model)
+
+        K_x = Phi_x.shape[1]
+        K_y = Phi_y.shape[1]
+        pred_x = Phi_x @ self.weights[:K_x, 0]
+        pred_y = Phi_y @ self.weights[:K_y, 1]
+
+        raw_pred = np.column_stack([pred_x, pred_y])
+        clamped_pred = np.clip(raw_pred, 0.0, 1.0)
+        if single_sample:
+            return clamped_pred[0]
+        return clamped_pred
+
+
+class DecoupledLinearGazeMapper(DecoupledBaseGazeMapper):
+    """
+    Decoupled Linear Ridge Regression mapper.
+
+    X basis: [1, raw_x, (head_yaw if D >= 10)]
+    Y basis: [1, raw_y, (head_pitch if D >= 10)]
+    """
+
+    @property
+    def model_type(self) -> str:
+        return "decoupled_linear"
+
+    def _transform_x(self, X: np.ndarray) -> np.ndarray:
+        N, D = X.shape
+        if D >= 10:
+            return np.column_stack([np.ones(N, dtype=np.float64), X[:, 0], X[:, 8]])
+        return np.column_stack([np.ones(N, dtype=np.float64), X[:, 0]])
+
+    def _transform_y(self, X: np.ndarray) -> np.ndarray:
+        N, D = X.shape
+        if D >= 10:
+            return np.column_stack([np.ones(N, dtype=np.float64), X[:, 1], X[:, 9]])
+        return np.column_stack([np.ones(N, dtype=np.float64), X[:, 1]])
+
+
+class DecoupledPolynomialGazeMapper(DecoupledBaseGazeMapper):
+    """
+    Decoupled Degree-2 Polynomial Ridge Regression mapper.
+
+    X basis: [1, raw_x, raw_x^2, (head_yaw if D >= 10)]
+    Y basis: [1, raw_y, raw_y^2, (head_pitch if D >= 10)]
+    """
+
+    @property
+    def model_type(self) -> str:
+        return "decoupled_polynomial"
+
+    def _transform_x(self, X: np.ndarray) -> np.ndarray:
+        N, D = X.shape
+        x = X[:, 0]
+        if D >= 10:
+            return np.column_stack([np.ones(N, dtype=np.float64), x, x * x, X[:, 8]])
+        return np.column_stack([np.ones(N, dtype=np.float64), x, x * x])
+
+    def _transform_y(self, X: np.ndarray) -> np.ndarray:
+        N, D = X.shape
+        y = X[:, 1]
+        if D >= 10:
+            return np.column_stack([np.ones(N, dtype=np.float64), y, y * y, X[:, 9]])
+        return np.column_stack([np.ones(N, dtype=np.float64), y, y * y])
+
+
+class PureDecoupledLinearGazeMapper(DecoupledBaseGazeMapper):
+    """
+    Pure Decoupled Linear Ridge Regression mapper.
+
+    Operates strictly on ocular horizontal and vertical ratios without
+    auxiliary head pose features, preventing posture shifts from swaying
+    gaze predictions. Upstream physiological VOR compensation in Step 6
+    is fully preserved.
+
+    X basis: [1, raw_x]
+    Y basis: [1, raw_y]
+    """
+
+    @property
+    def model_type(self) -> str:
+        return "pure_decoupled_linear"
+
+    def _transform_x(self, X: np.ndarray) -> np.ndarray:
+        N, _ = X.shape
+        return np.column_stack([np.ones(N, dtype=np.float64), X[:, 0]])
+
+    def _transform_y(self, X: np.ndarray) -> np.ndarray:
+        N, _ = X.shape
+        return np.column_stack([np.ones(N, dtype=np.float64), X[:, 1]])
+
+
 def create_mapper(
     model_type: str = "polynomial",
     ridge_alpha: float = 0.01,
@@ -626,7 +836,13 @@ def create_mapper(
 ) -> BaseGazeMapper:
     """Factory creating mapper instance by type name."""
     type_clean = model_type.strip().lower()
-    if type_clean in ("polynomial", "poly", "deg2"):
+    if type_clean in ("pure_decoupled_linear", "pure_decoupled_lin", "pure_linear"):
+        return PureDecoupledLinearGazeMapper(ridge_alpha=ridge_alpha, use_scaler=use_scaler)
+    elif type_clean in ("decoupled_linear", "decoupled_lin"):
+        return DecoupledLinearGazeMapper(ridge_alpha=ridge_alpha, use_scaler=use_scaler)
+    elif type_clean in ("decoupled_polynomial", "decoupled_poly"):
+        return DecoupledPolynomialGazeMapper(ridge_alpha=ridge_alpha, use_scaler=use_scaler)
+    elif type_clean in ("polynomial", "poly", "deg2"):
         return PolynomialGazeMapper(ridge_alpha=ridge_alpha, use_scaler=use_scaler)
     elif type_clean in ("compact_polynomial", "compact_poly", "spatial_poly"):
         return CompactPolynomialGazeMapper(ridge_alpha=ridge_alpha, use_scaler=use_scaler)
@@ -637,7 +853,7 @@ def create_mapper(
     else:
         raise ValueError(
             f"Unknown mapper model type: '{model_type}'. "
-            f"Choose 'linear', 'compact_linear', 'compact_polynomial', or 'polynomial'."
+            f"Choose 'pure_decoupled_linear', 'decoupled_linear', 'decoupled_polynomial', 'linear', 'compact_linear', 'compact_polynomial', or 'polynomial'."
         )
 
 
@@ -649,6 +865,12 @@ def load_mapper_auto(filepath: Path) -> BaseGazeMapper:
     with open(filepath, "r", encoding="utf-8") as f:
         data = json.load(f)
     m_type = data.get("model_type", "polynomial").lower()
+    if m_type in ("pure_decoupled_linear", "pure_linear"):
+        return PureDecoupledLinearGazeMapper.from_dict(data)
+    if m_type == "decoupled_linear":
+        return DecoupledLinearGazeMapper.from_dict(data)
+    if m_type == "decoupled_polynomial":
+        return DecoupledPolynomialGazeMapper.from_dict(data)
     if m_type == "linear":
         return LinearGazeMapper.from_dict(data)
     if m_type == "compact_linear":
@@ -764,17 +986,23 @@ def compare_and_select_mapper(
     base_alpha = max(1e-4, float(ridge_alpha))
     if n_samples <= 12 and not has_val:
         cand_specs: List[Tuple[str, Type[BaseGazeMapper], List[float], float]] = [
-            ("compact_linear", CompactLinearGazeMapper, sorted(set([0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0])), 0.0),
-            ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.0),
-            ("linear", LinearGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.002),
-            ("polynomial", PolynomialGazeMapper, sorted(set([0.5, 1.0, 2.5, 5.0])), 0.005),
+            ("pure_decoupled_linear", PureDecoupledLinearGazeMapper, sorted(set([0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.0),
+            ("decoupled_linear", DecoupledLinearGazeMapper, sorted(set([0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.002),
+            ("decoupled_polynomial", DecoupledPolynomialGazeMapper, sorted(set([0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.015),
+            ("compact_linear", CompactLinearGazeMapper, sorted(set([0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0])), 0.005),
+            ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.020),
+            ("linear", LinearGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.005),
+            ("polynomial", PolynomialGazeMapper, sorted(set([0.5, 1.0, 2.5, 5.0])), 0.025),
         ]
     else:
         cand_specs = [
-            ("compact_linear", CompactLinearGazeMapper, sorted(set([base_alpha, 0.02, 0.1, 0.5, 1.0])), 0.0),
-            ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.5])), 0.0),
-            ("linear", LinearGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.5])), 0.0),
-            ("polynomial", PolynomialGazeMapper, sorted(set([base_alpha, 0.1, 0.5, 1.5, 5.0])), 0.002),
+            ("pure_decoupled_linear", PureDecoupledLinearGazeMapper, sorted(set([base_alpha, 0.02, 0.1, 0.5, 1.0])), 0.0),
+            ("decoupled_linear", DecoupledLinearGazeMapper, sorted(set([base_alpha, 0.02, 0.1, 0.5, 1.0])), 0.002),
+            ("decoupled_polynomial", DecoupledPolynomialGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.0])), 0.015),
+            ("compact_linear", CompactLinearGazeMapper, sorted(set([base_alpha, 0.02, 0.1, 0.5, 1.0])), 0.005),
+            ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.5])), 0.020),
+            ("linear", LinearGazeMapper, sorted(set([base_alpha, 0.05, 0.25, 1.0, 2.5])), 0.005),
+            ("polynomial", PolynomialGazeMapper, sorted(set([base_alpha, 0.1, 0.5, 1.5, 5.0])), 0.025),
         ]
 
     benchmarks: List[Dict[str, Any]] = []
@@ -820,10 +1048,13 @@ def compare_and_select_mapper(
     selected_training_metrics: Dict[str, float] = best_entry["train_metrics"]
     selected_eval_metrics: Dict[str, float] = best_entry["eval_metrics"]
 
-    lin_metrics, lin_train_metrics, _, _ = best_by_family["linear"]
-    poly_metrics, poly_train_metrics, _, _ = best_by_family["polynomial"]
-    comp_lin_metrics, _, _, _ = best_by_family["compact_linear"]
-    comp_poly_metrics, _, _, _ = best_by_family["compact_polynomial"]
+    lin_metrics, lin_train_metrics, _, _ = best_by_family.get("linear", (selected_eval_metrics, selected_training_metrics, None, None))
+    poly_metrics, poly_train_metrics, _, _ = best_by_family.get("polynomial", (selected_eval_metrics, selected_training_metrics, None, None))
+    comp_lin_metrics, _, _, _ = best_by_family.get("compact_linear", (lin_metrics, None, None, None))
+    comp_poly_metrics, _, _, _ = best_by_family.get("compact_polynomial", (poly_metrics, None, None, None))
+    pure_dec_lin_metrics, _, _, _ = best_by_family.get("pure_decoupled_linear", (lin_metrics, None, None, None))
+    dec_lin_metrics, _, _, _ = best_by_family.get("decoupled_linear", (lin_metrics, None, None, None))
+    dec_poly_metrics, _, _, _ = best_by_family.get("decoupled_polynomial", (poly_metrics, None, None, None))
 
     comparison_report = {
         "selected_model": selected_type,
@@ -835,6 +1066,9 @@ def compare_and_select_mapper(
         "polynomial_metrics": poly_metrics,
         "compact_linear_metrics": comp_lin_metrics,
         "compact_polynomial_metrics": comp_poly_metrics,
+        "pure_decoupled_linear_metrics": pure_dec_lin_metrics,
+        "decoupled_linear_metrics": dec_lin_metrics,
+        "decoupled_polynomial_metrics": dec_poly_metrics,
         "linear_training_metrics": lin_train_metrics,
         "polynomial_training_metrics": poly_train_metrics,
         "training_metrics": selected_training_metrics,
@@ -857,6 +1091,9 @@ def compare_and_select_mapper(
     logger.info(
         f"Mapper Comparison Complete ({selection_basis}, scaler={selected.normalization_method}). "
         f"Selected: [{selected_type.upper()} alpha={selected_alpha}] ({selected_eval_metrics['mean_euclidean_pixels']:.1f}px CV) | "
+        f"PureDecLin: {pure_dec_lin_metrics['mean_euclidean_pixels']:.1f}px | "
+        f"DecoupledLin: {dec_lin_metrics['mean_euclidean_pixels']:.1f}px | "
+        f"DecoupledPoly: {dec_poly_metrics['mean_euclidean_pixels']:.1f}px | "
         f"CompactLin: {comp_lin_metrics['mean_euclidean_pixels']:.1f}px | "
         f"CompactPoly: {comp_poly_metrics['mean_euclidean_pixels']:.1f}px | "
         f"Linear: {lin_metrics['mean_euclidean_pixels']:.1f}px | "

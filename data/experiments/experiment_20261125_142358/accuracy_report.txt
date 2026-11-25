@@ -1,0 +1,74 @@
+================================================================================
+AABAR CV - Experiment Accuracy & Gaze Evaluation Report
+================================================================================
+
+--- EXPERIMENT OVERVIEW ---
+Experiment ID:           experiment_20261125_142358
+Date & Time:             2026-11-25 14:24:35
+Screen Resolution:       1920x1080 (Diagonal: 2202.9 px)
+Calibration Model:       LINEAR
+Normalization Method:    StandardScaler
+Training Samples:        9 targets (259 accepted frames)
+Validation Status:       COMPLETED
+Validation Trials:       9 valid / 9 planned (0 rejected, 0.0% rej rate)
+
+--- MAIN RESULTS (INDEPENDENT VALIDATION DATA ONLY) ---
+Accuracy within 2%   :   11.1% (1/9 trials, <= 44.1 px)
+Accuracy within 5%   :   22.2% (2/9 trials, <= 110.1 px)
+Accuracy within 10%  :   55.6% (5/9 trials, <= 220.3 px)
+Target Selection Accuracy:   0.0% (0 hits, 9 misses / 9 valid trials)
+Average Prediction Error:  215.9 pixels (9.8% of screen diagonal)
+Rejected Trial Rate:         0.0% (0/9 attempted)
+Target Boundary Tested:    Rendered Target Circle (radius 22 display px / 33.0 px @ 1920x1080)
+
+--- DETAILED PREDICTION ERROR METRICS ---
+Mean Euclidean Error:    215.9 px (9.8% diagonal | 0.1457 norm)
+Median Euclidean Error:  216.4 px (9.8% diagonal | 0.1346 norm)
+Maximum Euclidean Error: 400.9 px (18.2% diagonal | 0.2608 norm)
+90th Percentile Error:   342.2 px
+X-Axis Error (MAE / RMSE): MAE_X = 169.5 px (0.0883) | RMSE_X = 196.5 px (0.1023)
+Y-Axis Error (MAE / RMSE): MAE_Y = 110.9 px (0.1027) | RMSE_Y = 144.7 px (0.1340)
+Valid vs Rejected Trials:  Valid = 9 | Rejected/Invalid = 0 | Successful Hits = 0 | Failed Selections = 9
+
+--- MODEL TRAINING PERFORMANCE VS INDEPENDENT VALIDATION ---
+Calibration Training Error (Fit Only): Mean = 20.5 px | MAE_X = 0.0082 | MAE_Y = 0.0105
+Independent Validation Accuracy:       Target Hit = 0.0% | Within 5% = 22.2% | Mean Error = 215.9 px
+
+--- DIRECTION ACCURACY (LEFT / RIGHT / CENTER / UP / DOWN) ---
+  Direction    | Valid/Rej | Sel Acc  | Within 5%  | Mean Err (px) | Bias (X, Y) px
+  ------------------------------------------------------------------------
+  LEFT         |    3/0    |   0.0%  |   33.3%   | 210.2         | (+5.1, -82.7)
+  RIGHT        |    3/0    |   0.0%  |   33.3%   | 237.0         | (+216.6, -82.9)
+  CENTER       |    1/0    |   0.0%  |    0.0%   | 148.8         | (-145.4, -31.8)
+  UP           |    3/0    |   0.0%  |   33.3%   | 124.8         | (-95.4, +32.7)
+  DOWN         |    3/0    |   0.0%  |    0.0%   | 345.0         | (+247.2, -232.7)
+
+--- SCREEN REGION ACCURACY (ROWS / COLUMNS / EDGES) ---
+  Region           | Valid/Rej | Sel Acc  | Within 5%  | Mean Err (px) | Bias (X, Y) px
+  ----------------------------------------------------------------------------
+  top_row          |    3/0    |   0.0%  |   33.3%   | 124.8         | (-95.4, +32.7)
+  middle_row       |    3/0    |   0.0%  |   33.3%   | 177.9         | (+47.3, -63.8)
+  bottom_row       |    3/0    |   0.0%  |    0.0%   | 345.0         | (+247.2, -232.7)
+  left_column      |    3/0    |   0.0%  |   33.3%   | 210.2         | (+5.1, -82.7)
+  center_column    |    3/0    |   0.0%  |    0.0%   | 200.4         | (-22.7, -98.2)
+  right_column     |    3/0    |   0.0%  |   33.3%   | 237.0         | (+216.6, -82.9)
+  edge_regions     |    8/0    |   0.0%  |   25.0%   | 224.3         | (+92.8, -94.9)
+  center_region    |    1/0    |   0.0%  |    0.0%   | 148.8         | (-145.4, -31.8)
+
+--- PER-TARGET PERFORMANCE ---
+  Target Name        | Valid/Rej | Hits/Valid | Sel Acc  | Mean Err (px) | Bias (X, Y) px
+  ----------------------------------------------------------------------------
+  val_bottom_center  |    1/0    |    0/1     | 0.0%     | 327.5         | (+202.1, -257.7)
+  val_bottom_left    |    1/0    |    0/1     | 0.0%     | 306.6         | (+194.0, -237.4)
+  val_bottom_right   |    1/0    |    0/1     | 0.0%     | 400.9         | (+345.6, -203.1)
+  val_center         |    1/0    |    0/1     | 0.0%     | 148.8         | (-145.4, -31.8)
+  val_middle_left    |    1/0    |    0/1     | 0.0%     | 107.8         | (+15.2, -106.7)
+  val_middle_right   |    1/0    |    0/1     | 0.0%     | 277.1         | (+272.0, -52.8)
+  val_top_center     |    1/0    |    0/1     | 0.0%     | 124.8         | (-124.7, -5.2)
+  val_top_left       |    1/0    |    0/1     | 0.0%     | 216.3         | (-193.8, +96.1)
+  val_top_right      |    1/0    |    0/1     | 0.0%     | 33.1          | (+32.3, +7.3)
+
+--- SIMPLE EXPLANATION ---
+Status: [COMPLETED]. The system successfully predicted gaze positions inside the target boundaries in 0 out of 9 valid trials (0.0%). Its average prediction error was 215.9 pixels (median: 216.4 px, 9.8% of the screen diagonal), and 22.2% of valid trials fell within 5% of the screen diagonal (2 out of 9). Weakest direction observed: DOWN (mean error 345.0 px); weakest screen region: bottom_row (mean error 345.0 px). This experiment performed better than the previous validated experiment (experiment_20261125_141825) according to the independent validation results (average error changed from 312.0 px to 215.9 px (30.8% error reduction); target selection accuracy changed from 0.0% to 0.0% (+0.0 percentage points)).
+
+================================================================================

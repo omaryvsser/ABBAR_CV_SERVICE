@@ -264,6 +264,10 @@ def normalize_trial_record(
             "trial_duration_sec": _to_float_or_none(r.get("trial_duration_sec", r.get("duration_sec"))) or 0.0,
             "trial_status": str(r.get("trial_status", r.get("status")) or "VALID").upper(),
             "rejection_reason": str(r.get("rejection_reason") or ""),
+            "raw_x": _to_float_or_none(r.get("raw_x")),
+            "raw_y": _to_float_or_none(r.get("raw_y")),
+            "head_yaw": _to_float_or_none(r.get("head_yaw")),
+            "head_pitch": _to_float_or_none(r.get("head_pitch")),
         }
 
     sw = max(1, int(d["screen_width"] or default_screen_width))

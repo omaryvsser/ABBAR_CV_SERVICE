@@ -50,7 +50,7 @@ from .core.gaze_output import (
 )
 from .core.gaze_smoother import GazeSmoother, ScreenGazeStabilizer
 from .core.head_pose import HeadPose, HeadPoseEstimator
-from .core.screen_calibration import CalibrationState, ScreenCalibrator, TargetPhase
+from .core.screen_calibration import CalibrationState, CalibrationTarget, ScreenCalibrator, TargetPhase
 from .core.screen_validator import (
     AccuracySummary,
     DEFAULT_VALIDATION_TARGETS,
@@ -212,11 +212,28 @@ class CVPipeline:
             fixation_max_std=self.config.screen.calib_fixation_max_std,
             allow_target_retry=self.config.visualization.enabled,
         )
-        val_targets = (
+        base_val_targets = (
             FULL_9_REGION_VALIDATION_TARGETS
             if self.config.screen.validation_grid_mode == "full_9"
             else DEFAULT_VALIDATION_TARGETS
         )
+        btn_w = self.config.screen.validation_target_width_px
+        btn_h = self.config.screen.validation_target_height_px
+        if btn_w is not None and btn_h is not None:
+            val_targets = [
+                CalibrationTarget(
+                    target_id=t.target_id,
+                    name=t.name,
+                    x=t.x,
+                    y=t.y,
+                    radius_px=t.radius_px,
+                    width_px=float(btn_w),
+                    height_px=float(btn_h),
+                )
+                for t in base_val_targets
+            ]
+        else:
+            val_targets = base_val_targets
         self.screen_validator = ScreenValidator(
             targets=val_targets,
             settling_duration=self.config.screen.settling_duration,

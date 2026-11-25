@@ -836,10 +836,14 @@ class ExperimentLogger:
             "trial_duration_sec",
             "trial_status",
             "rejection_reason",
+            "raw_x",
+            "raw_y",
+            "head_yaw",
+            "head_pitch",
             "timestamp",
         ]
         with open(filepath, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=headers)
+            writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
             writer.writeheader()
             for t in trials:
                 writer.writerow(t.to_csv_dict())

@@ -298,8 +298,28 @@ class ScreenConfig(BaseModel):
         description="Standardize regression input features with StandardScaler (fitted on training data only)",
     )
     validation_target_radius_px: Optional[float] = Field(
-        default=None,
+        default_factory=lambda: (
+            float(os.getenv("AABAR_VAL_TARGET_RADIUS_PX"))
+            if os.getenv("AABAR_VAL_TARGET_RADIUS_PX")
+            else None
+        ),
         description="Optional fixed target radius in screen pixels; None derives exact boundary from rendered target",
+    )
+    validation_target_width_px: Optional[float] = Field(
+        default_factory=lambda: (
+            float(os.getenv("AABAR_VAL_TARGET_WIDTH_PX"))
+            if os.getenv("AABAR_VAL_TARGET_WIDTH_PX")
+            else None
+        ),
+        description="Optional AAC button hit boundary width in screen pixels (must pair with validation_target_height_px)",
+    )
+    validation_target_height_px: Optional[float] = Field(
+        default_factory=lambda: (
+            float(os.getenv("AABAR_VAL_TARGET_HEIGHT_PX"))
+            if os.getenv("AABAR_VAL_TARGET_HEIGHT_PX")
+            else None
+        ),
+        description="Optional AAC button hit boundary height in screen pixels (must pair with validation_target_width_px)",
     )
     profiles_dir: str = Field(
         default_factory=lambda: os.getenv("AABAR_PROFILES_DIR", "data/calibration"),

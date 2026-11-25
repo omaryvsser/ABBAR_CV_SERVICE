@@ -18,6 +18,8 @@ import pytest
 from src.core.eye_features import extract_eye_features
 from src.core.gaze_mapper import (
     BaseGazeMapper,
+    DecoupledLinearGazeMapper,
+    DecoupledPolynomialGazeMapper,
     LinearGazeMapper,
     PolynomialGazeMapper,
     compare_and_select_mapper,
@@ -214,3 +216,74 @@ def test_compare_and_select_mapper():
     assert "selected_model" in report
     assert "linear_metrics" in report
     assert "polynomial_metrics" in report
+    assert "decoupled_linear_metrics" in report
+    assert "decoupled_polynomial_metrics" in report
+
+
+def test_decoupled_mappers_cross_axis_immunity():
+    """
+    Verify that DecoupledLinearGazeMapper and DecoupledPolynomialGazeMapper have ZERO
+    cross-axis contamination:
+    1. Changing horizontal features (raw_x, head_yaw) MUST NOT alter predicted Y.
+    2. Changing vertical features (raw_y, head_pitch) MUST NOT alter predicted X.
+    """
+    np.random.seed(42)
+    N = 9
+    D = 10
+    X = np.random.uniform(0.3, 0.7, size=(N, D))
+    y = np.random.uniform(0.18, 0.82, size=(N, 2))
+
+    for m_type in ["decoupled_linear", "decoupled_polynomial"]:
+        mapper = create_mapper(m_type, ridge_alpha=0.05, use_scaler=True).fit(X, y)
+        assert mapper.is_fitted
+
+        # Base sample
+        x_base = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1.0, 1.0, 0.0, 0.0])
+        pred_base = mapper.predict(x_base)
+
+        # Shift horizontal eye and head yaw dramatically
+        x_horiz_shift = x_base.copy()
+        x_horiz_shift[0] = 0.90   # raw_x looking far right
+        x_horiz_shift[8] = 0.50   # head_yaw looking far right
+        pred_horiz_shift = mapper.predict(x_horiz_shift)
+
+        # X should change significantly; Y MUST be identically constant!
+        assert abs(pred_horiz_shift[0] - pred_base[0]) > 0.05
+        assert pred_horiz_shift[1] == pytest.approx(pred_base[1], abs=1e-12)
+
+        # Shift vertical eye and head pitch dramatically
+        x_vert_shift = x_base.copy()
+        x_vert_shift[1] = 0.15   # raw_y looking far up
+        x_vert_shift[9] = -0.40  # head_pitch looking up
+        pred_vert_shift = mapper.predict(x_vert_shift)
+
+        # Y should change significantly; X MUST be identically constant!
+        assert abs(pred_vert_shift[1] - pred_base[1]) > 0.05
+        assert pred_vert_shift[0] == pytest.approx(pred_base[0], abs=1e-12)
+
+
+def test_decoupled_mapper_serialization():
+    """Verify that decoupled mappers save and restore cleanly from JSON."""
+    np.random.seed(77)
+    X = np.random.uniform(0.2, 0.8, size=(12, 10))
+    y = np.random.uniform(0.1, 0.9, size=(12, 2))
+
+    for m_type in ["decoupled_linear", "decoupled_polynomial"]:
+        mapper = create_mapper(m_type, ridge_alpha=0.05, use_scaler=True).fit(X, y)
+        orig_preds = mapper.predict(X)
+
+        # Dict roundtrip
+        d = mapper.to_dict()
+        assert d["model_type"] == m_type
+        restored = create_mapper(m_type).from_dict(d)
+        assert restored.is_fitted
+        np.testing.assert_allclose(restored.predict(X), orig_preds)
+
+        # File roundtrip
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fpath = Path(tmpdir) / f"{m_type}.json"
+            mapper.save(fpath)
+            loaded = load_mapper_auto(fpath)
+            assert loaded.model_type == m_type
+            np.testing.assert_allclose(loaded.predict(X), orig_preds)
+
