@@ -387,6 +387,35 @@ class ScreenConfig(BaseModel):
     )
 
 
+class DwellEngineConfig(BaseModel):
+    """Configuration for Phase 4 Dwell Selection Engine."""
+
+    enabled: bool = Field(
+        default_factory=lambda: os.getenv("AABAR_DWELL_ENABLED", "false").lower() in ("true", "1", "yes"),
+        description="Whether dwell selection engine is active",
+    )
+    dwell_duration_ms: float = Field(
+        default_factory=lambda: float(os.getenv("AABAR_DWELL_DURATION_MS", "1200.0")),
+        description="Fixation duration in ms required to trigger selection",
+    )
+    cooldown_duration_ms: float = Field(
+        default_factory=lambda: float(os.getenv("AABAR_DWELL_COOLDOWN_MS", "800.0")),
+        description="Refractory lockout duration in ms preventing accidental repeat selection",
+    )
+    stability_filter_enabled: bool = Field(
+        default_factory=lambda: os.getenv("AABAR_DWELL_STABILITY_FILTER", "true").lower() in ("true", "1", "yes"),
+        description="Filter high-velocity saccades during target dwell",
+    )
+    pause_on_lost_tracking: bool = Field(
+        default_factory=lambda: os.getenv("AABAR_DWELL_PAUSE_ON_LOST", "true").lower() in ("true", "1", "yes"),
+        description="Pause dwell progress during brief tracking drops instead of hard reset",
+    )
+    allow_repeat_without_leaving: bool = Field(
+        default_factory=lambda: os.getenv("AABAR_DWELL_ALLOW_REPEAT", "false").lower() in ("true", "1", "yes"),
+        description="Allow repeated selection of same target without looking away",
+    )
+
+
 class AppConfig(BaseModel):
     """Master application configuration."""
 
@@ -395,6 +424,7 @@ class AppConfig(BaseModel):
     gaze: GazeConfig = Field(default_factory=GazeConfig)
     visualization: VisualizationConfig = Field(default_factory=VisualizationConfig)
     screen: ScreenConfig = Field(default_factory=ScreenConfig)
+    dwell: DwellEngineConfig = Field(default_factory=DwellEngineConfig)
 
 
 def load_config() -> AppConfig:

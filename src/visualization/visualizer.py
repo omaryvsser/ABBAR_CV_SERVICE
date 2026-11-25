@@ -80,6 +80,8 @@ class CVVisualizer:
         screen_gaze: Optional[ScreenGazeOutput] = None,
         screen_calibrator: Optional[Any] = None,
         screen_validator: Optional[Any] = None,
+        dwell_snapshot: Optional[Any] = None,
+        dwell_engine: Optional[Any] = None,
     ) -> np.ndarray:
         """
         Draw tracking elements, overlays, gaze badge, radar, and performance HUD.
@@ -194,6 +196,15 @@ class CVVisualizer:
             or (screen_calibrator is not None and getattr(screen_calibrator, "is_completed", False))
         ):
             self._draw_post_session_results_panel(canvas, screen_calibrator, screen_validator, w, h)
+
+        # 6c. Phase 4: Dwell Selection Target Overlay
+        if (
+            not is_screen_task_active
+            and dwell_snapshot is not None
+            and dwell_engine is not None
+            and getattr(dwell_engine, "enabled", False)
+        ):
+            self._draw_dwell_overlay(canvas, dwell_snapshot, dwell_engine, w, h)
 
         # 7. Top Information HUD (compact single-strip during active calibration/validation)
         self._draw_hud(
@@ -1118,3 +1129,145 @@ class CVVisualizer:
         font_sm = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(img, "UP", (vm_x + 4, vm_y + 11), font_sm, 0.28, (0, 200, 255), 1, cv2.LINE_AA)
         cv2.putText(img, "DN", (vm_x + 4, vm_y + radar_size - 4), font_sm, 0.28, (0, 200, 255), 1, cv2.LINE_AA)
+
+    def _draw_dwell_overlay(
+        self,
+        img: np.ndarray,
+        dwell_snapshot: Any,
+        dwell_engine: Any,
+        w: int,
+        h: int,
+    ) -> None:
+        """
+        Render Phase 4 selectable AAC target cards, dwell progress indicators,
+        visual selection confirmations, and real-time gaze crosshair.
+        """
+        target_manager = getattr(dwell_engine, "target_manager", None)
+        if target_manager is None:
+            return
+
+        targets = target_manager.all_targets()
+        if not targets:
+            return
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        cur_tid = getattr(dwell_snapshot, "current_target_id", None)
+        dwell_st = getattr(dwell_snapshot, "state", None)
+        dwell_st_val = getattr(dwell_st, "value", str(dwell_st))
+        dwell_prog = float(getattr(dwell_snapshot, "dwell_progress", 0.0))
+        cd_prog = float(getattr(dwell_snapshot, "cooldown_progress", 0.0))
+
+        # 1. Render Target Rectangles
+        for t in targets:
+            x1, y1 = self.interface_to_window_point(t.x, t.y, w, h)
+            x2, y2 = self.interface_to_window_point(t.right, t.bottom, w, h)
+            if x2 <= x1 + 10 or y2 <= y1 + 10:
+                continue
+
+            cx1 = max(0, min(w - 1, x1))
+            cy1 = max(0, min(h - 1, y1))
+            cx2 = max(0, min(w, x2))
+            cy2 = max(0, min(h, y2))
+            if cx2 <= cx1 or cy2 <= cy1:
+                continue
+
+            is_active_target = (cur_tid == t.target_id)
+
+            if not t.enabled:
+                bg_color = (25, 25, 30)
+                border_color = (80, 80, 85)
+                text_color = (130, 130, 135)
+                alpha = 0.50
+                border_thick = 1
+                status_suffix = " (OFF)"
+            elif is_active_target and dwell_st_val == "SELECTED":
+                bg_color = (20, 180, 60)
+                border_color = (0, 255, 120)
+                text_color = (255, 255, 255)
+                alpha = 0.60
+                border_thick = 3
+                status_suffix = " [SELECTED!]"
+            elif is_active_target and dwell_st_val == "COOLDOWN":
+                bg_color = (35, 45, 60)
+                border_color = (0, 165, 255)
+                text_color = (220, 220, 220)
+                alpha = 0.40
+                border_thick = 2
+                status_suffix = " [LOCKED]"
+            elif is_active_target and dwell_st_val == "DWELLING":
+                bg_color = (30, 65, 80)
+                border_color = (0, 230, 255)
+                text_color = (255, 255, 255)
+                alpha = 0.45
+                border_thick = 3
+                status_suffix = f" [{int(dwell_prog * 100)}%]"
+            else:
+                bg_color = (24, 30, 40)
+                border_color = (160, 175, 190)
+                text_color = (240, 240, 240)
+                alpha = 0.35
+                border_thick = 2
+                status_suffix = ""
+
+            # Alpha blended card background
+            sub = img[cy1:cy2, cx1:cx2]
+            overlay = sub.copy()
+            cv2.rectangle(sub, (0, 0), (cx2 - cx1, cy2 - cy1), bg_color, -1)
+            cv2.addWeighted(sub, alpha, overlay, 1.0 - alpha, 0, sub)
+
+            # Outline
+            cv2.rectangle(img, (cx1, cy1), (cx2, cy2), border_color, border_thick, lineType=cv2.LINE_AA)
+
+            # Centered text label
+            display_label = f"{t.label}{status_suffix}"
+            (text_w, text_h), _ = cv2.getTextSize(display_label, font, 0.48, 1)
+            tx = max(cx1 + 8, int((cx1 + cx2 - text_w) / 2))
+            ty = int((cy1 + cy2 + text_h) / 2)
+            cv2.putText(img, display_label, (tx, ty), font, 0.48, text_color, 1, cv2.LINE_AA)
+
+            # Active dwell progress bar along button bottom edge
+            if is_active_target and dwell_st_val == "DWELLING" and dwell_prog > 0:
+                bar_margin = 6
+                bar_h = 6
+                bx1 = cx1 + bar_margin
+                by1 = cy2 - bar_margin - bar_h
+                bx2 = cx2 - bar_margin
+                total_bar_w = bx2 - bx1
+                prog_w = int(total_bar_w * dwell_prog)
+                if prog_w > 0:
+                    cv2.rectangle(img, (bx1, by1), (bx1 + prog_w, by1 + bar_h), (0, 245, 180), -1, lineType=cv2.LINE_AA)
+                    cv2.rectangle(img, (bx1, by1), (bx2, by1 + bar_h), (0, 180, 120), 1, lineType=cv2.LINE_AA)
+
+            # Cooldown recovery bar
+            elif is_active_target and dwell_st_val == "COOLDOWN":
+                bar_margin = 6
+                bar_h = 4
+                bx1 = cx1 + bar_margin
+                by1 = cy2 - bar_margin - bar_h
+                bx2 = cx2 - bar_margin
+                total_bar_w = bx2 - bx1
+                cd_w = int(total_bar_w * (1.0 - cd_prog))
+                if cd_w > 0:
+                    cv2.rectangle(img, (bx1, by1), (bx1 + cd_w, by1 + bar_h), (0, 165, 255), -1, lineType=cv2.LINE_AA)
+
+        # 2. Gaze Cursor Marker
+        gx = getattr(dwell_snapshot, "gaze_x", None)
+        gy = getattr(dwell_snapshot, "gaze_y", None)
+        if gx is not None and gy is not None and math.isfinite(gx) and math.isfinite(gy):
+            cur_px, cur_py = self.interface_to_window_point(gx, gy, w, h)
+            if 0 <= cur_px < w and 0 <= cur_py < h:
+                if dwell_st_val == "DWELLING":
+                    cursor_color = (0, 245, 180)
+                    pulse_r = int(14 + 4 * np.sin(time.time() * 8.0))
+                    cv2.circle(img, (cur_px, cur_py), pulse_r, (0, 230, 255), 2, lineType=cv2.LINE_AA)
+                elif dwell_st_val == "SELECTED":
+                    cursor_color = (0, 255, 100)
+                    cv2.circle(img, (cur_px, cur_py), 18, (0, 255, 100), 3, lineType=cv2.LINE_AA)
+                elif dwell_st_val == "COOLDOWN":
+                    cursor_color = (0, 165, 255)
+                    cv2.circle(img, (cur_px, cur_py), 12, (0, 165, 255), 1, lineType=cv2.LINE_AA)
+                else:
+                    cursor_color = (0, 200, 255)
+
+                cv2.circle(img, (cur_px, cur_py), 4, cursor_color, -1, lineType=cv2.LINE_AA)
+                cv2.circle(img, (cur_px, cur_py), 10, cursor_color, 1, lineType=cv2.LINE_AA)

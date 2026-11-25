@@ -1,13 +1,13 @@
-# AABAR — Computer Vision Service (Phases 1, 2 & 3: Calibration, Gaze Mapping & Evaluation)
+# AABAR — Computer Vision Service (Phases 1, 2, 3 & 4: Calibration, Gaze Mapping, Evaluation & Dwell Selection)
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![MediaPipe](https://img.shields.io/badge/mediapipe-0.10.x-green.svg)](https://developers.google.com/mediapipe)
 [![OpenCV](https://img.shields.io/badge/opencv-4.11-orange.svg)](https://opencv.org/)
-[![Tests](https://img.shields.io/badge/tests-110%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-149%20passed-brightgreen.svg)]()
 
 > **AABAR (عَبْر)** is an Arabic-first Augmentative and Alternative Communication (AAC) graduation platform designed to empower individuals with Amyotrophic Lateral Sclerosis (ALS) and severe motor impairments to communicate via eye gaze.
 
-The **Computer Vision Service** is a standalone, real-time Python service responsible for capturing camera frames, detecting facial and ocular landmarks, extracting normalized eye features, estimating 3D head pose, calibrating personalized neutral gaze baselines, classifying relative gaze direction with hysteresis, conducting 9-point screen calibration, training regularized regression models for continuous gaze-to-screen coordinate mapping, evaluating spatial accuracy on independent test targets, and logging structured experiment datasets (CSV, JSON, Excel).
+The **Computer Vision Service** is a standalone, real-time Python service responsible for capturing camera frames, detecting facial and ocular landmarks, extracting normalized eye features, estimating 3D head pose, calibrating personalized neutral gaze baselines, classifying relative gaze direction with hysteresis, conducting 9-point screen calibration, training regularized regression models for continuous gaze-to-screen coordinate mapping, evaluating spatial accuracy on independent test targets, running a noise-tolerant dwell selection engine, and logging structured experiment datasets (CSV, JSON, Excel).
 
 ---
 
@@ -33,12 +33,13 @@ The **Computer Vision Service** is a standalone, real-time Python service respon
   - [Coordinate Convention & Legacy Profile Compatibility](#coordinate-convention--legacy-profile-compatibility)
 - [Simulated Screen Canvas & Real-Time Visualization](#simulated-screen-canvas--real-time-visualization)
 - [Structured Output Schema (JSON)](#structured-output-schema-json)
+- [Phase 4: Dwell Selection Engine](#phase-4-dwell-selection-engine)
 - [Installation & Setup](#installation--setup)
 - [Running the Real-Time Demo](#running-the-real-time-demo)
 - [Running the Automated Test Suite](#running-the-automated-test-suite)
 - [Performance & Latency Characteristics](#performance--latency-characteristics)
 - [Known Limitations & Real-World Accuracy Notice](#known-limitations--real-world-accuracy-notice)
-- [Phase 4 Roadmap: AAC Integration & Dwell Selection](#phase-4-roadmap-aac-integration--dwell-selection)
+- [Phase 5 Roadmap: AAC Integration & WebSockets](#phase-5-roadmap-aac-integration--websockets)
 - [License & Attributions](#license--attributions)
 
 ---
@@ -710,13 +711,36 @@ Tested on a standard laptop CPU:
 
 ---
 
-## Phase 4 Roadmap: AAC Integration & Dwell Selection
+## Phase 4: Dwell Selection Engine
 
-With Phase 3 complete (screen calibration, continuous gaze mapping, accuracy validation, and profile management), the service is prepared for Phase 4 integration:
-1. **Fixation & Dwell-Based Selection**: Dwell timers (e.g., 800ms) with animated progress rings for activating AAC cards without physical motor input.
-2. **WebSocket Streaming**: Streaming `GazeFrameResult` JSON over local WebSockets (`ws://localhost:8765`) to the Angular AAC interface.
-3. **Virtual Arabic Keyboard**: Linking screen gaze coordinates to dwell-selectable Arabic letter matrices.
-4. **Text-to-Speech (TTS) Pipeline**: Synthesizing Arabic speech from selected phrases.
+Phase 4 introduces a production-grade **Dwell Selection Engine** that converts continuous gaze tracking into intentional assistive selections without requiring motor buttons or blinks.
+
+Detailed architectural documentation: [docs/DWELL_SELECTION.md](docs/DWELL_SELECTION.md)
+
+### Key Capabilities:
+- **5-State Deterministic Machine**: `IDLE` -> `DWELLING` -> `SELECTED` -> `COOLDOWN` -> `LOST_TRACKING`.
+- **Configurable Dwell & Cooldown Timing**: Default 1200 ms dwell fixation, 800 ms refractory cooldown.
+- **Micro-Saccade & Blink Grace Periods**: 200 ms target excursion tolerance and 300 ms tracking-loss hold to avoid accidental cancellation from natural physiological eye flutter.
+- **Target Management & Overlap Arbitration**: Rectangular bounding boxes with priority, area, and order arbitration rules.
+- **Decoupled Architecture**: Pure numerical calculations isolated from rendering; supports mouse simulation mode and live webcam tracking.
+- **Interactive Manual Demo**:
+  ```bash
+  # Mouse gaze simulation (ideal for rapid testing without sitting in front of a camera)
+  python -m dwell.manual_demo --mouse
+
+  # Live camera gaze tracking with sample AAC grid
+  python main.py --dwell --dwell-demo
+  ```
+
+---
+
+## Phase 5 Roadmap: AAC Integration & WebSockets
+
+With Phase 4 complete, the service is fully prepared for Phase 5 system integration:
+1. **WebSocket Streaming**: Streaming `GazeFrameResult` JSON and `SelectionEvent` over local WebSockets (`ws://localhost:8765`) to the backend and frontend.
+2. **Spring Boot / Angular AAC Interface**: Connecting selection events to Arabic symbol communication boards.
+3. **Virtual Arabic Keyboard**: Multi-level grid matrix enabling full text typing via eye-dwell fixation.
+4. **Text-to-Speech (TTS) Pipeline**: Synthesizing Arabic speech output from composed messages.
 
 ---
 

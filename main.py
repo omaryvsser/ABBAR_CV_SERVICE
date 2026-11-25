@@ -183,6 +183,28 @@ def parse_args() -> argparse.Namespace:
         help="Optional AAC button hit boundary height in screen pixels (pair with --target-width-px)",
     )
     parser.add_argument(
+        "--dwell",
+        action="store_true",
+        help="Enable Phase 4 Dwell Selection Engine on startup",
+    )
+    parser.add_argument(
+        "--dwell-time",
+        type=int,
+        default=None,
+        help="Dwell duration in milliseconds before selection triggers (default: 1200)",
+    )
+    parser.add_argument(
+        "--cooldown-time",
+        type=int,
+        default=None,
+        help="Post-selection refractory cooldown in milliseconds (default: 800)",
+    )
+    parser.add_argument(
+        "--dwell-demo",
+        action="store_true",
+        help="Launch interactive Phase 4 Dwell Selection manual testing mode with AAC target grid",
+    )
+    parser.add_argument(
         "--compare-experiments",
         type=str,
         nargs="+",
@@ -307,6 +329,12 @@ def main() -> int:
         config.screen.validation_target_width_px = args.target_width_px
     if args.target_height_px is not None:
         config.screen.validation_target_height_px = args.target_height_px
+    if args.dwell or args.dwell_demo:
+        config.dwell.enabled = True
+    if args.dwell_time is not None:
+        config.dwell.dwell_duration_ms = args.dwell_time
+    if args.cooldown_time is not None:
+        config.dwell.cooldown_duration_ms = args.cooldown_time
 
     model_file = Path(config.landmarker.model_path)
     if not model_file.exists():
@@ -326,12 +354,20 @@ def main() -> int:
     print(f" GUI Display:      {'Enabled' if config.visualization.enabled else 'Disabled (Headless)'}")
     if config.visualization.enabled:
         print(f" Preview Mode:     {'Selfie Mirror (Flipped)' if config.visualization.mirror_display else 'Unmirrored (Raw Camera)'}")
-    print(" Controls:         's' = 9-Pt Calib+Val | 't' = Validate | 'y' = Retry Target | 'k' = Skip Target | 'c' = Re-center | 'p' = Save Profile | 'q'/ESC = Exit")
+    print(f" Dwell Engine:     {'Enabled (' + str(config.dwell.dwell_duration_ms) + 'ms dwell, ' + str(config.dwell.cooldown_duration_ms) + 'ms cooldown)' if config.dwell.enabled else 'Disabled (Press \'d\' to toggle)'}")
+    print(" Controls:         's' = Calib+Val | 't' = Val | 'd' = Dwell | '1'-'4' = AAC Targets | 'x' = Reset Dwell | 'q'/ESC = Exit")
     print("=" * 65 + "\n")
 
     try:
         pipeline = CVPipeline(config=config, use_mock_camera=args.mock_camera)
         pipeline.start()
+        if pipeline.dwell_engine is not None:
+            pipeline.dwell_engine.on_selection(
+                lambda evt: logger.info(
+                    f"[DWELL SELECTION] Target '{evt.target_label}' ({evt.target_id}) triggered! "
+                    f"Gaze=({evt.gaze_x:.3f}, {evt.gaze_y:.3f}) Duration={evt.dwell_duration_ms}ms"
+                )
+            )
         if args.record_data:
             rec_file = pipeline.start_data_logging()
             logger.info(f"Started diagnostic data recording on launch: {rec_file}")
@@ -461,6 +497,21 @@ def main() -> int:
                     is_rec = pipeline.toggle_data_logging()
                     status_str = "STARTED" if is_rec else "STOPPED"
                     logger.info(f"Diagnostic telemetry recording {status_str} via keypress ('r').")
+                elif key in (ord("d"), ord("D")):
+                    is_en = pipeline.toggle_dwell_selection()
+                    logger.info(f"Dwell Selection Engine toggled: {'ENABLED' if is_en else 'DISABLED'}")
+                elif key in (ord("x"), ord("X")):
+                    if pipeline.dwell_engine is not None:
+                        pipeline.dwell_engine.reset()
+                        logger.info("Dwell Engine manually reset to IDLE.")
+                elif key in (ord("1"), ord("2"), ord("3"), ord("4")):
+                    idx = chr(key)
+                    tid = f"target_{idx}"
+                    if pipeline.dwell_engine is not None:
+                        tgt = pipeline.dwell_engine.target_manager.get_target(tid)
+                        if tgt is not None:
+                            tgt.enabled = not tgt.enabled
+                            logger.info(f"Target '{tgt.label}' ({tid}) enabled state: {tgt.enabled}")
 
             # CPU throttle to respect target frame rate
             elapsed = time.perf_counter() - cycle_start

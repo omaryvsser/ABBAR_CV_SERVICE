@@ -18,7 +18,7 @@ import logging
 import os
 from pathlib import Path
 import time
-from typing import Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
@@ -61,6 +61,13 @@ from .core.screen_validator import (
 from .core.tracking_state import TrackingState
 from .utils.fps_counter import FPSCounter, FPSMetrics
 from .visualization.visualizer import CVVisualizer
+from dwell import (
+    DwellConfig,
+    DwellEngine,
+    DwellSnapshot,
+    DwellTarget,
+    TargetManager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +106,7 @@ class PipelineOutput:
     screen_gaze: Optional[ScreenGazeOutput] = None
     screen_calibrator: Optional[ScreenCalibrator] = None
     screen_validator: Optional[ScreenValidator] = None
+    dwell: Optional[DwellSnapshot] = None
 
 
 class CVPipeline:
@@ -270,6 +278,44 @@ class CVPipeline:
 
         if self.config.gaze.auto_calibrate_on_start:
             self.calibrator.start_calibration()
+
+        # Phase 4: Dwell Selection Engine
+        dwell_cfg = DwellConfig(
+            dwell_duration_ms=self.config.dwell.dwell_duration_ms,
+            cooldown_duration_ms=self.config.dwell.cooldown_duration_ms,
+            stability_filter_enabled=self.config.dwell.stability_filter_enabled,
+            pause_on_lost_tracking=self.config.dwell.pause_on_lost_tracking,
+            allow_repeat_without_leaving=self.config.dwell.allow_repeat_without_leaving,
+            screen_width=self.config.screen.screen_width,
+            screen_height=self.config.screen.screen_height,
+        )
+        self.dwell_engine = DwellEngine(
+            config=dwell_cfg,
+            target_manager=TargetManager.create_sample_grid(),
+            enabled=self.config.dwell.enabled,
+        )
+        self._last_dwell_snapshot: Optional[DwellSnapshot] = None
+
+    def toggle_dwell_selection(self) -> bool:
+        """Toggle active state of dwell selection engine. Returns new enabled status."""
+        if self.dwell_engine is not None:
+            self.dwell_engine.enabled = not self.dwell_engine.enabled
+            self.dwell_engine.reset()
+            logger.info(f"Dwell Selection Engine toggled: {'ENABLED' if self.dwell_engine.enabled else 'DISABLED'}")
+            return self.dwell_engine.enabled
+        return False
+
+    def set_dwell_targets(self, targets: List[DwellTarget]) -> None:
+        """Replace the active set of dwell targets."""
+        if self.dwell_engine is not None:
+            self.dwell_engine.target_manager.clear()
+            for t in targets:
+                self.dwell_engine.target_manager.add_target(t)
+            self.dwell_engine.reset()
+
+    def get_dwell_snapshot(self) -> Optional[DwellSnapshot]:
+        """Return latest live dwell telemetry snapshot."""
+        return self._last_dwell_snapshot
 
     def recalibrate(self) -> None:
         """Trigger interactive recalibration of neutral resting baseline."""
@@ -752,6 +798,25 @@ class CVPipeline:
             else None
         )
 
+        # 8d. Phase 4: Dwell Selection Engine Update
+        dwell_snapshot: Optional[DwellSnapshot] = None
+        if self.dwell_engine is not None and self.dwell_engine.enabled:
+            gx: Optional[float] = None
+            gy: Optional[float] = None
+            if screen_gaze_out is not None and screen_gaze_out.gaze_x is not None and screen_gaze_out.gaze_y is not None:
+                gx = screen_gaze_out.gaze_x
+                gy = screen_gaze_out.gaze_y
+            elif tracking_state in (TrackingState.TRACKING, TrackingState.LOW_CONFIDENCE) and eval_x is not None and eval_y is not None:
+                gx = float(eval_x)
+                gy = float(eval_y)
+            dwell_snapshot = self.dwell_engine.update(gx, gy, timestamp=now)
+            if dwell_snapshot.selection_event is not None:
+                logger.info(
+                    f"DWELL SELECTION CONFIRMED! Target '{dwell_snapshot.selection_event.target_label}' "
+                    f"[{dwell_snapshot.selection_event.target_id}] after {dwell_snapshot.selection_event.dwell_duration_ms:.0f}ms."
+                )
+        self._last_dwell_snapshot = dwell_snapshot
+
         gaze_frame_result = GazeFrameResult(
             timestamp=now,
             face_detected=detection_result.has_face,
@@ -760,6 +825,7 @@ class CVPipeline:
             head_pose=head_pose_out,
             tracking_state=tracking_state.value,
             screen_gaze=screen_gaze_out,
+            dwell=dwell_snapshot.to_dict() if dwell_snapshot is not None else None,
         )
 
         # 10. Diagnostic Data Logging (if enabled)
@@ -815,6 +881,8 @@ class CVPipeline:
                 screen_gaze=screen_gaze_out,
                 screen_calibrator=self.screen_calibrator,
                 screen_validator=self.screen_validator,
+                dwell_snapshot=dwell_snapshot,
+                dwell_engine=self.dwell_engine,
             )
 
         return PipelineOutput(
@@ -833,6 +901,7 @@ class CVPipeline:
             screen_gaze=screen_gaze_out,
             screen_calibrator=self.screen_calibrator,
             screen_validator=self.screen_validator,
+            dwell=dwell_snapshot,
         )
 
     def close(self) -> None:

@@ -126,6 +126,7 @@ class GazeFrameResult:
     head_pose: Optional[HeadPoseOutput]
     tracking_state: str = "TRACKING"
     screen_gaze: Optional[ScreenGazeOutput] = None
+    dwell: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = {
@@ -138,6 +139,8 @@ class GazeFrameResult:
         }
         if self.screen_gaze is not None:
             d["screen_gaze"] = self.screen_gaze.to_dict()
+        if self.dwell is not None:
+            d["dwell"] = self.dwell
         return d
 
     def to_json(self, indent: Optional[int] = None) -> str:
