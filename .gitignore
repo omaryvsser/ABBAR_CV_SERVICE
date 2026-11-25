@@ -31,4 +31,5 @@ htmlcov/
 
 # Logs and debug output
 *.log
+logs/
 recordings/
