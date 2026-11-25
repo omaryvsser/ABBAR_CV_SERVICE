@@ -991,8 +991,8 @@ def compare_and_select_mapper(
             ("decoupled_polynomial", DecoupledPolynomialGazeMapper, sorted(set([0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.015),
             ("compact_linear", CompactLinearGazeMapper, sorted(set([0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0])), 0.005),
             ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.020),
-            ("linear", LinearGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.005),
-            ("polynomial", PolynomialGazeMapper, sorted(set([0.5, 1.0, 2.5, 5.0])), 0.025),
+            ("linear", LinearGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.035),
+            ("polynomial", PolynomialGazeMapper, sorted(set([0.5, 1.0, 2.5, 5.0])), 0.050),
         ]
     else:
         cand_specs = [

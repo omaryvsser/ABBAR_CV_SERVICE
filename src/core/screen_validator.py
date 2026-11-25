@@ -911,7 +911,7 @@ class ScreenValidator:
             raw_x_val = float(median_features[0])
             raw_y_val = float(median_features[1])
             yaw_val = float(median_features[8] * 30.0) if len(median_features) >= 10 else None
-            pitch_val = float(median_features[9] * 20.0) if len(median_features) >= 10 else None
+            pitch_val = float(median_features[9] * 30.0) if len(median_features) >= 10 else None
 
             assert self.mapper is not None
             pred = self.mapper.predict(median_features)
