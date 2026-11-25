@@ -354,7 +354,12 @@ def main() -> int:
     print(f" GUI Display:      {'Enabled' if config.visualization.enabled else 'Disabled (Headless)'}")
     if config.visualization.enabled:
         print(f" Preview Mode:     {'Selfie Mirror (Flipped)' if config.visualization.mirror_display else 'Unmirrored (Raw Camera)'}")
-    print(f" Dwell Engine:     {'Enabled (' + str(config.dwell.dwell_duration_ms) + 'ms dwell, ' + str(config.dwell.cooldown_duration_ms) + 'ms cooldown)' if config.dwell.enabled else 'Disabled (Press \'d\' to toggle)'}")
+    dwell_status = (
+        f"Enabled ({config.dwell.dwell_duration_ms}ms dwell, {config.dwell.cooldown_duration_ms}ms cooldown)"
+        if config.dwell.enabled
+        else "Disabled (Press 'd' to toggle)"
+    )
+    print(f" Dwell Engine:     {dwell_status}")
     print(" Controls:         's' = Calib+Val | 't' = Val | 'd' = Dwell | '1'-'4' = AAC Targets | 'x' = Reset Dwell | 'q'/ESC = Exit")
     print("=" * 65 + "\n")
 
