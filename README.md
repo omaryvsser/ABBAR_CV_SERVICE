@@ -311,13 +311,17 @@ Constant (zero-variance) features receive $\sigma = 1.0$, and any missing/`NaN`/
 
 ### 8. Ridge-Regularized Mapping Models & Generalization Selection
 
-Given $N$ aggregated calibration targets with standardized feature matrix $\mathbf{Z} \in \mathbb{R}^{N \times 10}$ and screen coordinates $\mathbf{Y} \in \mathbb{R}^{N \times 2}$, `compare_and_select_mapper()` evaluates four regularized model families across swept Ridge alphas ($\lambda$):
+Given $N$ aggregated calibration targets with standardized feature matrix $\mathbf{Z} \in \mathbb{R}^{N \times 10}$ and screen coordinates $\mathbf{Y} \in \mathbb{R}^{N \times 2}$, `compare_and_select_mapper()` evaluates regularized model families across swept Ridge alphas ($\lambda$):
 
-- **Compact Linear Ridge (`compact_linear`)**: Low-variance model over the 6 core binocular + VOR head features (`raw_x`, `raw_y`, yaw, pitch, and eye symmetry/difference), preventing collinear overfitting on 9-point training sets.
+- **Decoupled Linear Ridge (`decoupled_linear`) [Recommended & Default]**: Isolates horizontal mapping ($X = f(\text{raw\_x}, \text{yaw})$) and vertical mapping ($Y = f(\text{raw\_y}, \text{pitch})$) into independent 1D regressions. With only 3 parameters per axis, degrees of freedom remain strictly preserved ($N/P = 3.0$ on 9-point calibration) and cross-axis bleeding is mathematically impossible. In real webcam validation (`experiment_20261125_185607`), this model achieved **55.6% target hit accuracy** and slashed mean error to **93.6 px**.
+- **Decoupled Polynomial Ridge (`decoupled_polynomial`)**: Independent degree-2 polynomial regressions per axis ($X = f(\text{raw\_x}, \text{yaw}, \text{raw\_x}^2)$, $Y = f(\text{raw\_y}, \text{pitch}, \text{raw\_y}^2)$).
+- **Compact Linear Ridge (`compact_linear`)**: Low-variance model over the 6 core binocular + VOR head features (`raw_x`, `raw_y`, yaw, pitch, and eye symmetry/difference).
 - **Compact Polynomial Ridge (`compact_polynomial`)**: Degree-2 diagonal/interaction terms on the compact subspace (`raw_x`, `raw_y`, yaw, pitch).
 - **Full Linear Ridge (`linear`)**: All 10 standardized features $\mathbf{\Phi} = [\mathbf{1}, \mathbf{Z}] \in \mathbb{R}^{N \times 11}$.
 - **Full Degree-2 Polynomial Ridge (`polynomial`)**: Interaction basis $\mathbf{\Phi} = [\mathbf{1}, \mathbf{Z}, \mathbf{Z}^2, \{z_i z_j\}] \in \mathbb{R}^{N \times 36}$.
-- **Auto Model Selection**: Uses Leave-One-Out Cross-Validation (refitting scaler inside each fold) or held-out validation data to pick the model family and Ridge penalty minimizing out-of-sample generalization error rather than in-sample training error.
+- **Complexity-Penalized Model Selection**: Uses Leave-One-Out Cross-Validation (refitting scaler inside each fold) with small-sample complexity penalties ($+0.035$ for coupled linear, $+0.050$ for polynomial) to prevent high-dimensional models from memorizing posture noise on small $N \le 12$ calibrations.
+
+For the exhaustive technical investigation and root-cause analysis, see [MEDIAPIPE_ACCURACY_INVESTIGATION.md](reports/MEDIAPIPE_ACCURACY_INVESTIGATION.md).
 
 ### 9. Accuracy Percentages vs. Error Metrics
 

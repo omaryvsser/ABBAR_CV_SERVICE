@@ -7,17 +7,18 @@ head pose orientation, and classification telemetry to CSV for algorithmic evalu
 
 import csv
 from datetime import datetime
+import json
 import logging
 from pathlib import Path
 import time
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class DiagnosticDataLogger:
     """
-    Lightweight CSV logger for gaze tracking diagnostics and evaluation.
+    Lightweight CSV and JSON logger for gaze tracking diagnostics and evaluation.
     """
 
     HEADERS = [
@@ -45,6 +46,10 @@ class DiagnosticDataLogger:
         "r_openness",
         "l_openness",
         "v_state",
+        "norm_gaze_x",
+        "norm_gaze_y",
+        "screen_pixel_x",
+        "screen_pixel_y",
     ]
 
     def __init__(self, output_dir: Optional[Path] = None) -> None:
@@ -52,13 +57,14 @@ class DiagnosticDataLogger:
         Initialize the data logger.
 
         Args:
-            output_dir: Directory where CSV files are saved (defaults to cv-service/logs).
+            output_dir: Directory where log files are saved (defaults to cv-service/logs).
         """
         self.output_dir = output_dir or (Path(__file__).resolve().parent.parent.parent / "logs")
         self._is_logging = False
         self._file_handle = None
         self._csv_writer = None
         self._current_path: Optional[Path] = None
+        self._last_saved_path: Optional[Path] = None
         self._record_count = 0
 
     @property
@@ -132,6 +138,10 @@ class DiagnosticDataLogger:
         r_openness: Optional[float] = None,
         l_openness: Optional[float] = None,
         v_state: Optional[str] = None,
+        norm_gaze_x: Optional[float] = None,
+        norm_gaze_y: Optional[float] = None,
+        screen_pixel_x: Optional[int] = None,
+        screen_pixel_y: Optional[int] = None,
     ) -> None:
         """Write a single frame sample to the active CSV file."""
         if not self._is_logging or self._csv_writer is None:
@@ -165,6 +175,10 @@ class DiagnosticDataLogger:
             fmt(r_openness, 3),
             fmt(l_openness, 3),
             v_state or "",
+            fmt(norm_gaze_x),
+            fmt(norm_gaze_y),
+            str(screen_pixel_x) if screen_pixel_x is not None else "",
+            str(screen_pixel_y) if screen_pixel_y is not None else "",
         ]
         self._csv_writer.writerow(row)
         self._record_count += 1
@@ -188,8 +202,42 @@ class DiagnosticDataLogger:
                 self._csv_writer = None
 
         self._is_logging = False
+        self._last_saved_path = saved_path
         logger.info(f"Stopped diagnostic logging. Saved {self._record_count} records to {saved_path}")
         return saved_path
+
+    def export_json(self, json_path: Optional[Path] = None) -> Optional[Path]:
+        """
+        Export the current or most recently completed session to a JSON file.
+
+        Args:
+            json_path: Optional destination path for the JSON file.
+
+        Returns:
+            Path to the saved JSON file, or None if no log exists.
+        """
+        source_csv = self._current_path or self._last_saved_path
+        if source_csv is None or not source_csv.exists():
+            logger.warning("No CSV log file available to export as JSON.")
+            return None
+
+        if self._file_handle is not None:
+            self._file_handle.flush()
+
+        if json_path is None:
+            json_path = source_csv.with_suffix(".json")
+
+        records: List[Dict[str, Any]] = []
+        with open(source_csv, mode="r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for r in reader:
+                records.append(dict(r))
+
+        with open(json_path, mode="w", encoding="utf-8") as f:
+            json.dump({"record_count": len(records), "records": records}, f, indent=2)
+
+        logger.info(f"Exported {len(records)} diagnostic samples to JSON: {json_path}")
+        return json_path
 
     def toggle_logging(self, filename: Optional[str] = None) -> bool:
         """

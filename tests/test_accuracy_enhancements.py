@@ -9,6 +9,7 @@ Covers:
 """
 
 from pathlib import Path
+import json
 import tempfile
 import time
 from unittest.mock import MagicMock, patch
@@ -231,12 +232,25 @@ def test_diagnostic_data_logger_lifecycle():
             yaw=1.2,
             pitch=-0.5,
             roll=0.1,
+            norm_gaze_x=0.55,
+            norm_gaze_y=0.48,
+            screen_pixel_x=1056,
+            screen_pixel_y=518,
         )
         assert logger.record_count == 1
 
         closed_path = logger.stop_logging()
         assert not logger.is_logging
         assert closed_path == csv_path
+
+        # Test export_json
+        json_path = logger.export_json()
+        assert json_path is not None and json_path.exists()
+        with open(json_path, mode="r", encoding="utf-8") as f:
+            j_data = json.load(f)
+        assert j_data["record_count"] == 1
+        assert j_data["records"][0]["direction"] == "CENTER"
+        assert j_data["records"][0]["screen_pixel_x"] == "1056"
 
         # Read back CSV contents
         with open(csv_path, mode="r", encoding="utf-8") as f:
@@ -248,6 +262,7 @@ def test_diagnostic_data_logger_lifecycle():
         assert lines[1][2] == "TRACKING"     # tracking_state
         assert lines[1][3] == "1"            # face_detected
         assert lines[1][16] == "CENTER"      # direction
+        assert lines[1][26] == "1056"        # screen_pixel_x
 
 
 def test_diagnostic_data_logger_toggle():

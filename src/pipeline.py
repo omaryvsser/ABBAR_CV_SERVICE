@@ -854,6 +854,10 @@ class CVPipeline:
                 r_openness=eye_features.right_eye.openness if eye_features.right_eye else None,
                 l_openness=eye_features.left_eye.openness if eye_features.left_eye else None,
                 v_state=self.gaze_classifier.active_vertical_state,
+                norm_gaze_x=screen_gaze_out.gaze_x if screen_gaze_out and screen_gaze_out.is_calibrated else None,
+                norm_gaze_y=screen_gaze_out.gaze_y if screen_gaze_out and screen_gaze_out.is_calibrated else None,
+                screen_pixel_x=screen_gaze_out.pixel_x if screen_gaze_out and screen_gaze_out.is_calibrated else None,
+                screen_pixel_y=screen_gaze_out.pixel_y if screen_gaze_out and screen_gaze_out.is_calibrated else None,
             )
 
         # 11. Update Performance Metrics

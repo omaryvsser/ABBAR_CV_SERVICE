@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>AABAR CV Report — experiment_20261125_185711</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem auto; max-width: 1020px; padding: 0 1.25rem; color: #1e293b; background: #f8fafc; line-height: 1.55; }
+  h1, h2, h3 { color: #0f172a; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1rem 0 1.5rem; }
+  .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.2rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .card.highlight { border-color: #2563eb; background: #eff6ff; }
+  .card-label { font-size: 0.85rem; color: #475569; font-weight: 600; text-transform: uppercase; }
+  .card-val { font-size: 1.85rem; font-weight: 700; color: #0f172a; margin: 0.25rem 0; }
+  .card-sub { font-size: 0.85rem; color: #64748b; }
+  table { width: 100%; border-collapse: collapse; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; margin-bottom: 1.5rem; font-size: 0.92rem; }
+  th, td { padding: 0.65rem 0.85rem; border-bottom: 1px solid #e2e8f0; text-align: left; }
+  th { background: #1e293b; color: #ffffff; font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  .notice { padding: 0.9rem 1.1rem; border-radius: 8px; margin: 1rem 0; font-weight: 600; }
+  .notice.warn { background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; }
+  .notice.info { background: #e0f2fe; border: 1px solid #0284c7; color: #0c4a6e; font-weight: 400; }
+  .plots { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+  .plot img { max-width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; }
+</style>
+</head>
+<body>
+  <h1>AABAR Gaze Tracking Experiment Report</h1>
+
+  <h2>Experiment Overview</h2>
+  <table>
+    <tbody>
+      <tr><th>Experiment ID</th><td><code>experiment_20261125_185711</code></td></tr>
+      <tr><th>Date and Time</th><td>2026-11-25 18:56:26</td></tr>
+      <tr><th>Screen Resolution</th><td>1920x1080 (Diagonal: 2202.9 px)</td></tr>
+      <tr><th>Calibration Model</th><td>DECOUPLED_LINEAR</td></tr>
+      <tr><th>Normalization Method</th><td>StandardScaler</td></tr>
+      <tr><th>Number of Training Samples</th><td>9 targets (249 accepted frames)</td></tr>
+      <tr><th>Number of Validation Trials</th><td>4 valid / 4 attempted (0 rejected — INCOMPLETE)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Main Results</h2>
+  
+            <div class="notice warn"><strong>Status [INCOMPLETE]:</strong> Validation not completed — Accuracy is not available yet.<br/>Validation was interrupted before completion (4 valid, 0 rejected trials saved).</div>
+            <div class="cards">
+              <div class="card"><div class="card-label">Target Selection Accuracy</div><div class="card-val">N/A</div><div class="card-sub">Validation required</div></div>
+              <div class="card"><div class="card-label">Accuracy within 2%</div><div class="card-val">N/A</div><div class="card-sub">Validation required</div></div>
+              <div class="card"><div class="card-label">Accuracy within 5%</div><div class="card-val">N/A</div><div class="card-sub">Validation required</div></div>
+              <div class="card"><div class="card-label">Accuracy within 10%</div><div class="card-val">N/A</div><div class="card-sub">Validation required</div></div>
+              <div class="card"><div class="card-label">Mean Error (pixels)</div><div class="card-val">N/A</div><div class="card-sub">Validation required</div></div>
+              <div class="card"><div class="card-label">Validation Status</div><div class="card-val">INCOMPLETE</div><div class="card-sub">Validation was interrupted before completion (4 valid, 0 rejected trials saved).</div></div>
+            </div>
+            <table>
+              <thead><tr><th>Result</th><th class="num">Value</th></tr></thead>
+              <tbody>
+                <tr><td>Accuracy within 2%</td><td class="num">Not available</td></tr>
+                <tr><td>Accuracy within 5%</td><td class="num">Not available</td></tr>
+                <tr><td>Accuracy within 10%</td><td class="num">Not available</td></tr>
+                <tr><td>Target Selection Accuracy</td><td class="num">Not available</td></tr>
+                <tr><td>Average Error (pixels)</td><td class="num">Not available</td></tr>
+                <tr><td>Average Error (% of screen diagonal)</td><td class="num">Not available</td></tr>
+              </tbody>
+            </table>
+            
+
+  <h2>Detailed Results</h2>
+  
+  <h3>Model Training Fit vs. Independent Validation</h3>
+  <table>
+    <tbody>
+      <tr><th>Calibration Training Error (Fit Only — Not Validation Accuracy)</th><td class="num">84.3 px</td></tr>
+      <tr><th>Independent Validation Performance</th><td class="num">Validation not completed — Accuracy is not available yet.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Simple Explanation</h2>
+  <div class="notice info">Validation not completed — Accuracy is not available yet. Status: [INCOMPLETE] — Validation was interrupted before completion (4 valid, 0 rejected trials saved). Calibration training fit residual was 84.3 pixels on the calibration grid only, which does NOT represent real-world validation accuracy.</div>
+
+  <h2>Comparison with Previous Experiments</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Experiment ID</th><th>Model</th><th>Norm</th>
+        <th class="num">Selection Acc</th><th class="num">Within 2%</th><th class="num">Within 5%</th><th class="num">Within 10%</th>
+        <th class="num">Mean Err</th><th class="num">Median Err</th><th class="num">Max Err</th>
+        <th class="num">Valid / Rej</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody><tr><td><code>experiment_20261123_221716</code></td><td>POLYNOMIAL</td><td>None</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr><td><code>experiment_20261123_224241</code></td><td>POLYNOMIAL</td><td>None</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr><td><code>experiment_20261124_220355</code></td><td>POLYNOMIAL</td><td>StandardScaler</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr><td><code>experiment_20261124_221738</code></td><td>POLYNOMIAL</td><td>StandardScaler</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr><td><code>experiment_20261124_225435</code></td><td>LINEAR</td><td>StandardScaler</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr><td><code>experiment_20261124_225544</code></td><td>COMPACT_POLYNOMIAL</td><td>StandardScaler</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Calibrated Only (No Validation)</td></tr><tr><td><code>experiment_20261124_232039</code></td><td>LINEAR</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>33.3%</td><td class='num'>423.4 px</td><td class='num'>301.0 px</td><td class='num'>812.0 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261124_232710</code></td><td>LINEAR</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>33.3%</td><td class='num'>314.8 px</td><td class='num'>319.3 px</td><td class='num'>630.8 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_141825</code></td><td>COMPACT_LINEAR</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>33.3%</td><td class='num'>312.0 px</td><td class='num'>274.1 px</td><td class='num'>673.8 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_142358</code></td><td>LINEAR</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>11.1%</td><td class='num'>22.2%</td><td class='num'>55.6%</td><td class='num'>215.9 px</td><td class='num'>216.3 px</td><td class='num'>400.9 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_150006</code></td><td>LINEAR</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>66.7%</td><td class='num'>177.0 px</td><td class='num'>163.5 px</td><td class='num'>252.2 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_150223</code></td><td>DECOUPLED_POLYNOMIAL</td><td>StandardScaler</td><td class='num'>11.1%</td><td class='num'>11.1%</td><td class='num'>77.8%</td><td class='num'>100.0%</td><td class='num'>95.4 px</td><td class='num'>97.3 px</td><td class='num'>206.2 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_153718</code></td><td>LINEAR</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>11.1%</td><td class='num'>77.8%</td><td class='num'>100.0%</td><td class='num'>87.8 px</td><td class='num'>83.2 px</td><td class='num'>185.9 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_162637</code></td><td>COMPACT_POLYNOMIAL</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>22.2%</td><td class='num'>77.8%</td><td class='num'>175.3 px</td><td class='num'>173.2 px</td><td class='num'>304.4 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_162740</code></td><td>LINEAR</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>55.6%</td><td class='num'>202.9 px</td><td class='num'>197.1 px</td><td class='num'>284.3 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_165544</code></td><td>COMPACT_LINEAR</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>22.2%</td><td class='num'>44.4%</td><td class='num'>253.3 px</td><td class='num'>229.0 px</td><td class='num'>678.4 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_184448</code></td><td>DECOUPLED_LINEAR</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>33.3%</td><td class='num'>66.7%</td><td class='num'>161.6 px</td><td class='num'>146.5 px</td><td class='num'>318.4 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_184929</code></td><td>DECOUPLED_POLYNOMIAL</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>55.6%</td><td class='num'>316.5 px</td><td class='num'>196.9 px</td><td class='num'>890.0 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_185024</code></td><td>DECOUPLED_LINEAR</td><td>StandardScaler</td><td class='num'>0.0%</td><td class='num'>0.0%</td><td class='num'>22.2%</td><td class='num'>44.4%</td><td class='num'>239.2 px</td><td class='num'>222.4 px</td><td class='num'>423.9 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr><td><code>experiment_20261125_185607</code></td><td>DECOUPLED_LINEAR</td><td>StandardScaler</td><td class='num'>55.6%</td><td class='num'>22.2%</td><td class='num'>55.6%</td><td class='num'>100.0%</td><td class='num'>93.6 px</td><td class='num'>74.7 px</td><td class='num'>204.6 px</td><td class='num'>9 / 0</td><td>Validated</td></tr><tr style='background:#eef6ff;'><td><code>experiment_20261125_185711</code></td><td>DECOUPLED_LINEAR</td><td>StandardScaler</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>N/A</td><td class='num'>Not validated</td><td>Incomplete (Interrupted)</td></tr></tbody>
+  </table>
+
+  
+</body>
+</html>
