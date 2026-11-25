@@ -16,6 +16,7 @@ Provides visual rendering for:
 - Diagnostic data recording indicator [REC]
 """
 
+import math
 import time
 from typing import Any, List, Optional, Sequence, Tuple
 import cv2
