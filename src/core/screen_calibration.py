@@ -710,6 +710,7 @@ class ScreenCalibrator:
             "compact_polynomial",
             "decoupled_linear",
             "decoupled_polynomial",
+            "pure_decoupled_linear",
         ):
             mapper = create_mapper(
                 m_type_req, ridge_alpha=self.ridge_alpha, use_scaler=self.normalize_features
@@ -745,12 +746,24 @@ class ScreenCalibrator:
         compact_comp = {
             k: v for k, v in comp_report.items() if k != "candidate_benchmarks"
         }
+        neutral_yaw = None
+        neutral_pitch = None
+        for stat in per_target_stats:
+            if stat["target_id"] == 4 or stat["name"] == "center":
+                neutral_yaw = stat["feature_stats"]["yaw_median"]
+                neutral_pitch = stat["feature_stats"]["pitch_median"]
+                break
+
         self.calibration_metadata = {
             "calibration_timestamp": calib_ts,
             "total_targets": len(self.targets),
             "collected_sample_count": total_collected,
             "accepted_sample_count": accepted_count,
             "rejected_sample_count": rejected_count,
+            "neutral_pose": {
+                "yaw": neutral_yaw,
+                "pitch": neutral_pitch,
+            },
             "model_selection_summary": compact_comp,
             "per_target_stats": per_target_stats,
         }

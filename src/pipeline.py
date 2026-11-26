@@ -502,6 +502,16 @@ class CVPipeline:
         self._active_profile_file = Path(filepath)
         if self.screen_gaze_stabilizer is not None:
             self.screen_gaze_stabilizer.reset()
+        if profile.calibration_metadata and isinstance(profile.calibration_metadata, dict):
+            n_pose = profile.calibration_metadata.get("neutral_pose")
+            if n_pose and n_pose.get("yaw") is not None and n_pose.get("pitch") is not None:
+                self.calibrator.baseline.neutral_yaw = float(n_pose["yaw"])
+                self.calibrator.baseline.neutral_pitch = float(n_pose["pitch"])
+                self.calibrator.baseline.is_calibrated = True
+                logger.info(
+                    f"Aligned baseline VOR reference from loaded profile: "
+                    f"yaw={self.calibrator.baseline.neutral_yaw:+.1f} deg, pitch={self.calibrator.baseline.neutral_pitch:+.1f} deg"
+                )
         logger.info(
             f"Loaded and activated profile [{profile.profile_id}] ({profile.model_type}, "
             f"convention={profile.coordinate_convention})"
@@ -656,6 +666,16 @@ class CVPipeline:
                 self.active_profile = self.screen_calibrator.profile
                 if self.screen_gaze_stabilizer is not None:
                     self.screen_gaze_stabilizer.reset()
+                if self.active_profile and self.active_profile.calibration_metadata:
+                    n_pose = self.active_profile.calibration_metadata.get("neutral_pose")
+                    if n_pose and n_pose.get("yaw") is not None and n_pose.get("pitch") is not None:
+                        self.calibrator.baseline.neutral_yaw = float(n_pose["yaw"])
+                        self.calibrator.baseline.neutral_pitch = float(n_pose["pitch"])
+                        self.calibrator.baseline.is_calibrated = True
+                        logger.info(
+                            f"Aligned baseline VOR reference to calibration neutral posture: "
+                            f"yaw={self.calibrator.baseline.neutral_yaw:+.1f} deg, pitch={self.calibrator.baseline.neutral_pitch:+.1f} deg"
+                        )
                 if self.active_profile is not None:
                     try:
                         self._active_profile_file = self.profile_manager.save_profile(self.active_profile)

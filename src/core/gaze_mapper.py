@@ -987,12 +987,12 @@ def compare_and_select_mapper(
     if n_samples <= 12 and not has_val:
         cand_specs: List[Tuple[str, Type[BaseGazeMapper], List[float], float]] = [
             ("pure_decoupled_linear", PureDecoupledLinearGazeMapper, sorted(set([0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.0),
-            ("decoupled_linear", DecoupledLinearGazeMapper, sorted(set([0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.010),
-            ("decoupled_polynomial", DecoupledPolynomialGazeMapper, sorted(set([0.05, 0.1, 0.25, 0.5, 1.0])), 0.040),
-            ("compact_linear", CompactLinearGazeMapper, sorted(set([0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0])), 0.015),
-            ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([0.25, 0.5, 1.0, 2.5, 5.0])), 0.060),
-            ("linear", LinearGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.045),
-            ("polynomial", PolynomialGazeMapper, sorted(set([0.5, 1.0, 2.5, 5.0])), 0.080),
+            ("decoupled_linear", DecoupledLinearGazeMapper, sorted(set([0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0])), 0.040),
+            ("decoupled_polynomial", DecoupledPolynomialGazeMapper, sorted(set([0.05, 0.1, 0.25, 0.5, 1.0])), 0.060),
+            ("compact_linear", CompactLinearGazeMapper, sorted(set([0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0])), 0.020),
+            ("compact_polynomial", CompactPolynomialGazeMapper, sorted(set([0.25, 0.5, 1.0, 2.5, 5.0])), 0.080),
+            ("linear", LinearGazeMapper, sorted(set([0.1, 0.25, 0.5, 1.0, 2.5, 5.0])), 0.050),
+            ("polynomial", PolynomialGazeMapper, sorted(set([0.5, 1.0, 2.5, 5.0])), 0.100),
         ]
     else:
         cand_specs = [
