@@ -3,17 +3,22 @@ AABAR CV Service - Dwell Selection Engine.
 
 Phase 4: Modular, production-ready dwell selection state machine.
 Processes real-time gaze coordinates against registered selectable targets
-and emits structured SelectionEvents with deterministic cooldown and noise filtering.
+and emits structured SelectionEvents with deterministic cooldown, gaze smoothing,
+target hysteresis, and fixation saccade filtering.
 """
 
 from collections import deque
+import logging
 import math
 import time
 from typing import Callable, Deque, List, Optional, Tuple
 
 from .dwell_config import DwellConfig
 from .dwell_state import DwellSnapshot, DwellState, SelectionEvent
+from .gaze_filter import BaseGazeFilter, create_gaze_filter
 from .target_manager import DwellTarget, TargetManager
+
+logger = logging.getLogger(__name__)
 
 
 class DwellEngine:
@@ -24,6 +29,12 @@ class DwellEngine:
     Maintains a deterministic state machine:
         IDLE -> DWELLING -> SELECTED -> COOLDOWN -> IDLE
         (with safe transitions to/from LOST_TRACKING)
+
+    Enhanced with:
+    - Configurable Gaze Smoothing (None, EMA, One-Euro)
+    - Target Boundary Hysteresis (separate entry and expanded exit boundaries)
+    - Adjacent Target Switching Confirmation (jitter protection)
+    - Saccade & Fixation Detection (suppresses false dwell during ballistic gaze jumps)
     """
 
     def __init__(
@@ -37,6 +48,17 @@ class DwellEngine:
         self.target_manager = target_manager or TargetManager()
         self._clock: Callable[[], float] = clock or time.time
         self.enabled = bool(enabled)
+
+        # Gaze smoothing filter instance
+        self.filter: BaseGazeFilter = create_gaze_filter(
+            filter_type=self.config.filter_type,
+            min_cutoff=self.config.filter_min_cutoff,
+            beta=self.config.filter_beta,
+            d_cutoff=self.config.filter_d_cutoff,
+            ema_alpha=self.config.ema_alpha,
+            saccade_threshold=self.config.ema_saccade_threshold,
+            saccade_alpha=self.config.ema_saccade_alpha,
+        )
 
         # State machine variables
         self.state: DwellState = DwellState.IDLE
@@ -55,9 +77,15 @@ class DwellEngine:
         self.selected_target_id: Optional[str] = None
         self.has_left_after_selection: bool = True
 
-        # Gaze stability history
+        # Hysteresis: Pending adjacent target switch
+        self._pending_switch_target: Optional[DwellTarget] = None
+        self._pending_switch_start_time: Optional[float] = None
+
+        # Fixation & Gaze stability dynamics
         self.last_gaze_point: Optional[Tuple[float, float]] = None
         self.recent_points: Deque[Tuple[float, float]] = deque(maxlen=5)
+        self._last_speed: float = 0.0
+        self._is_fixating: bool = True
 
         # Event tracking
         self.last_emitted_event: Optional[SelectionEvent] = None
@@ -81,8 +109,13 @@ class DwellEngine:
         self.cooldown_start_time = None
         self.selected_target_id = None
         self.has_left_after_selection = True
+        self._pending_switch_target = None
+        self._pending_switch_start_time = None
         self.last_gaze_point = None
         self.recent_points.clear()
+        self._last_speed = 0.0
+        self._is_fixating = True
+        self.filter.reset()
 
     def update(
         self,
@@ -99,7 +132,7 @@ class DwellEngine:
             timestamp: Optional epoch float timestamp. If None, uses internal clock.
 
         Returns:
-            DwellSnapshot containing current state, target, progress, and any selection event.
+            DwellSnapshot containing current state, target, progress, coordinates, and any selection event.
         """
         now = float(timestamp) if timestamp is not None else float(self._clock())
 
@@ -115,35 +148,75 @@ class DwellEngine:
                 is_tracking_valid=False,
                 gaze_x=None,
                 gaze_y=None,
+                raw_gaze_x=gaze_x,
+                raw_gaze_y=gaze_y,
+                is_fixating=True,
+                filter_type=self.filter.filter_type,
                 selection_event=None,
             )
 
-        # Compute delta time (ms)
+        # Compute delta time (ms) bounded by max_dt_ms safety cap if configured
         if self.last_update_time is None:
             dt_ms = 0.0
+            dt_sec = 0.0333
         else:
-            dt_ms = max(0.0, (now - self.last_update_time) * 1000.0)
+            raw_dt_sec = max(0.0, now - self.last_update_time)
+            raw_dt_ms = raw_dt_sec * 1000.0
+            dt_ms = min(self.config.max_dt_ms, raw_dt_ms) if self.config.max_dt_ms is not None else raw_dt_ms
+            dt_sec = max(1e-4, raw_dt_sec)
         self.last_update_time = now
 
-        # 1. Validate coordinate inputs
+        # 1. Validate coordinate inputs (catches NaN, Inf, None)
         is_tracking_valid = self._validate_gaze_input(gaze_x, gaze_y)
 
         # 2. Tracking loss handling
-        if is_tracking_valid:
-            self.last_valid_tracking_time = now
-            self.recent_points.append((float(gaze_x), float(gaze_y)))
-            self.last_gaze_point = (float(gaze_x), float(gaze_y))
-        else:
-            # Handle invalid / missing tracking
-            return self._handle_lost_tracking(now, dt_ms)
+        if not is_tracking_valid:
+            self._pending_switch_target = None
+            self._pending_switch_start_time = None
+            return self._handle_lost_tracking(now, dt_ms, gaze_x, gaze_y)
 
+        self.last_valid_tracking_time = now
         assert gaze_x is not None and gaze_y is not None
-        gx = float(gaze_x)
-        gy = float(gaze_y)
+        raw_gx = float(gaze_x)
+        raw_gy = float(gaze_y)
 
-        # 3. Locate target under gaze
+        # 3. Gaze Smoothing Filter Update
+        if self.config.stability_filter_enabled:
+            filtered_coords = self.filter.update(raw_gx, raw_gy, timestamp=now, is_valid=True)
+            if filtered_coords[0] is not None and filtered_coords[1] is not None:
+                gx = float(filtered_coords[0])
+                gy = float(filtered_coords[1])
+            else:
+                gx, gy = raw_gx, raw_gy
+        else:
+            gx, gy = raw_gx, raw_gy
+
+        # 4. Instantaneous Velocity & Fixation Detection
+        if self.last_gaze_point is not None and dt_sec > 0:
+            step_dist = math.hypot(gx - self.last_gaze_point[0], gy - self.last_gaze_point[1])
+            self._last_speed = step_dist / dt_sec
+        else:
+            self._last_speed = 0.0
+
+        if self.config.fixation_detection_enabled:
+            self._is_fixating = bool(self._last_speed <= self.config.saccade_velocity_threshold)
+        else:
+            self._is_fixating = True
+
+        self.last_gaze_point = (gx, gy)
+        self.recent_points.append((gx, gy))
+
+        # 5. Target Containment with Hysteresis
+        active_target_id = self.current_target.target_id if self.current_target else None
+        exit_margin = self.config.exit_margin if self.config.hysteresis_enabled else 0.0
+        entry_margin = self.config.entry_margin if self.config.hysteresis_enabled else 0.0
+
         hit_target = self.target_manager.find_target_at(
-            gx, gy, policy=self.config.target_selection_policy
+            gx, gy,
+            policy=self.config.target_selection_policy,
+            current_target_id=active_target_id,
+            exit_margin=exit_margin,
+            entry_margin=entry_margin,
         )
 
         # Track if user looked away from the previously selected target
@@ -153,7 +226,7 @@ class DwellEngine:
 
         selection_event: Optional[SelectionEvent] = None
 
-        # 4. State Machine Transitions
+        # 6. State Machine Transitions
         if self.state == DwellState.COOLDOWN:
             assert self.cooldown_start_time is not None
             cooldown_elapsed = (now - self.cooldown_start_time) * 1000.0
@@ -161,9 +234,6 @@ class DwellEngine:
                 # Cooldown expired: ready for fresh selection
                 self.cooldown_start_time = None
                 self._transition_after_cooldown(hit_target, now, dt_ms)
-            else:
-                # Still in cooldown refractory period
-                pass
 
         elif self.state == DwellState.SELECTED:
             assert self.selected_state_start_time is not None
@@ -175,7 +245,6 @@ class DwellEngine:
                 )
                 cooldown_elapsed = (now - self.cooldown_start_time) * 1000.0
                 if cooldown_elapsed >= self.config.cooldown_duration_ms:
-                    # Cooldown also expired in this interval
                     self.cooldown_start_time = None
                     self._transition_after_cooldown(hit_target, now, dt_ms)
                 else:
@@ -190,29 +259,46 @@ class DwellEngine:
                     and not self.has_left_after_selection
                     and not self.config.allow_repeat_without_leaving
                 ):
-                    # Must look away before re-dwelling on same target
+                    self.state = DwellState.IDLE
+                    self.current_target = None
+                    self.accumulated_dwell_ms = 0.0
+                elif self.config.fixation_detection_enabled and not self._is_fixating:
+                    # Gaze swept into target during a ballistic saccade: wait for fixation to settle
                     self.state = DwellState.IDLE
                     self.current_target = None
                     self.accumulated_dwell_ms = 0.0
                 else:
-                    # Gaze entered target: start dwelling
+                    # Gaze entered target stably: start dwelling
                     self.state = DwellState.DWELLING
                     self.current_target = hit_target
                     self.dwell_start_time = now
                     self.accumulated_dwell_ms = 0.0
                     self.last_inside_target_time = now
+                    self._pending_switch_target = None
+                    self._pending_switch_start_time = None
             else:
                 self.state = DwellState.IDLE
                 self.current_target = None
                 self.accumulated_dwell_ms = 0.0
+                self._pending_switch_target = None
+                self._pending_switch_start_time = None
 
         elif self.state == DwellState.DWELLING:
             assert self.current_target is not None
 
             if hit_target is not None and hit_target.target_id == self.current_target.target_id:
-                # Gaze remains inside the active target: accumulate dwell
+                # Gaze remains on the active target (or within hysteresis exit margin)
+                self._pending_switch_target = None
+                self._pending_switch_start_time = None
                 self.last_inside_target_time = now
-                self.accumulated_dwell_ms += dt_ms
+
+                # Only accumulate dwell time if gaze is physically inside the target's entry boundary!
+                # If gaze is merely in an expanded hysteresis exit margin, hold dwell progress frozen.
+                is_inside_target = self.current_target.contains_entry(
+                    gx, gy, margin=self.config.entry_margin if self.config.hysteresis_enabled else 0.0
+                )
+                if is_inside_target:
+                    self.accumulated_dwell_ms += dt_ms
 
                 # Check if dwell threshold is reached
                 if self.accumulated_dwell_ms >= self.config.dwell_duration_ms:
@@ -242,15 +328,42 @@ class DwellEngine:
                             logger.error(f"Error in dwell selection callback: {e}")
 
             elif hit_target is not None and hit_target.target_id != self.current_target.target_id:
-                # Gaze shifted to a DIFFERENT target: clean switch without lingering
-                self.current_target = hit_target
-                self.dwell_start_time = now
-                self.accumulated_dwell_ms = 0.0
-                self.last_inside_target_time = now
-                self.state = DwellState.DWELLING
+                # Gaze entered a DIFFERENT target: check switch confirmation window
+                if self.config.hysteresis_enabled and self.config.switch_confirmation_ms > 0:
+                    if (
+                        self._pending_switch_target is None
+                        or self._pending_switch_target.target_id != hit_target.target_id
+                    ):
+                        self._pending_switch_target = hit_target
+                        self._pending_switch_start_time = now
+
+                    switch_elapsed = (now - self._pending_switch_start_time) * 1000.0
+                    if switch_elapsed >= self.config.switch_confirmation_ms:
+                        # Switch confirmed: cleanly transition to new target
+                        self.current_target = hit_target
+                        self.dwell_start_time = now
+                        self.accumulated_dwell_ms = 0.0
+                        self.last_inside_target_time = now
+                        self._pending_switch_target = None
+                        self._pending_switch_start_time = None
+                        self.state = DwellState.DWELLING
+                    else:
+                        # Within switch confirmation grace window: hold current dwell progress
+                        pass
+                else:
+                    # Instant switch without confirmation
+                    self.current_target = hit_target
+                    self.dwell_start_time = now
+                    self.accumulated_dwell_ms = 0.0
+                    self.last_inside_target_time = now
+                    self._pending_switch_target = None
+                    self._pending_switch_start_time = None
+                    self.state = DwellState.DWELLING
 
             else:
                 # Gaze is outside all targets: check leave_target_tolerance grace window
+                self._pending_switch_target = None
+                self._pending_switch_start_time = None
                 outside_duration = (
                     (now - self.last_inside_target_time) * 1000.0
                     if self.last_inside_target_time is not None
@@ -262,11 +375,19 @@ class DwellEngine:
                     self.current_target = None
                     self.accumulated_dwell_ms = 0.0
                 else:
-                    # Saccade / micro-jitter grace: do not accumulate dwell time, but hold progress
+                    # Saccade / micro-jitter grace: hold dwell progress frozen
                     pass
 
-        # 5. Build telemetry snapshot
-        return self._build_snapshot(gx, gy, is_tracking_valid=True, selection_event=selection_event, now=now)
+        # 7. Build telemetry snapshot
+        return self._build_snapshot(
+            gx=gx,
+            gy=gy,
+            raw_gx=raw_gx,
+            raw_gy=raw_gy,
+            is_tracking_valid=True,
+            selection_event=selection_event,
+            now=now,
+        )
 
     def _validate_gaze_input(self, gaze_x: Optional[float], gaze_y: Optional[float]) -> bool:
         """Verify gaze coordinates are finite numbers within acceptable bounds."""
@@ -280,7 +401,13 @@ class DwellEngine:
                 return False
         return True
 
-    def _handle_lost_tracking(self, now: float, dt_ms: float) -> DwellSnapshot:
+    def _handle_lost_tracking(
+        self,
+        now: float,
+        dt_ms: float,
+        raw_gx: Optional[float] = None,
+        raw_gy: Optional[float] = None,
+    ) -> DwellSnapshot:
         """Handle lost, invalid, or NaN/Inf gaze coordinates."""
         if self.state == DwellState.DWELLING and self.config.pause_on_lost_tracking:
             lost_duration = (
@@ -293,11 +420,11 @@ class DwellEngine:
                 self.state = DwellState.LOST_TRACKING
                 self.current_target = None
                 self.accumulated_dwell_ms = 0.0
+                self.filter.reset()
             else:
                 # Within tolerance: hold dwell progress frozen
                 pass
         elif self.state == DwellState.COOLDOWN:
-            # Cooldown continues running even if tracking is momentarily lost
             assert self.cooldown_start_time is not None
             cooldown_elapsed = (now - self.cooldown_start_time) * 1000.0
             if cooldown_elapsed >= self.config.cooldown_duration_ms:
@@ -305,8 +432,8 @@ class DwellEngine:
                 self.state = DwellState.LOST_TRACKING
                 self.current_target = None
                 self.accumulated_dwell_ms = 0.0
+                self.filter.reset()
         elif self.state == DwellState.SELECTED:
-            # Transition to cooldown
             self.state = DwellState.COOLDOWN
             self.cooldown_start_time = now
             self.accumulated_dwell_ms = 0.0
@@ -314,8 +441,17 @@ class DwellEngine:
             self.state = DwellState.LOST_TRACKING
             self.current_target = None
             self.accumulated_dwell_ms = 0.0
+            self.filter.reset()
 
-        return self._build_snapshot(None, None, is_tracking_valid=False, selection_event=None, now=now)
+        return self._build_snapshot(
+            gx=None,
+            gy=None,
+            raw_gx=raw_gx,
+            raw_gy=raw_gy,
+            is_tracking_valid=False,
+            selection_event=None,
+            now=now,
+        )
 
     def _transition_after_cooldown(
         self,
@@ -341,20 +477,26 @@ class DwellEngine:
                 self.dwell_start_time = now
                 self.accumulated_dwell_ms = 0.0
                 self.last_inside_target_time = now
+                self._pending_switch_target = None
+                self._pending_switch_start_time = None
         else:
             self.state = DwellState.IDLE
             self.current_target = None
             self.accumulated_dwell_ms = 0.0
+            self._pending_switch_target = None
+            self._pending_switch_start_time = None
 
     def _build_snapshot(
         self,
         gx: Optional[float],
         gy: Optional[float],
+        raw_gx: Optional[float],
+        raw_gy: Optional[float],
         is_tracking_valid: bool,
         selection_event: Optional[SelectionEvent],
         now: float,
     ) -> DwellSnapshot:
-        """Construct the live state snapshot."""
+        """Construct the live state snapshot with comprehensive telemetry."""
         # Progress calculation
         if self.state == DwellState.SELECTED:
             progress = 1.0
@@ -386,6 +528,10 @@ class DwellEngine:
             is_tracking_valid=is_tracking_valid,
             gaze_x=gx,
             gaze_y=gy,
+            raw_gaze_x=raw_gx,
+            raw_gaze_y=raw_gy,
+            is_fixating=self._is_fixating,
+            filter_type=self.filter.filter_type,
             selection_event=selection_event,
             cooldown_progress=cd_progress,
         )

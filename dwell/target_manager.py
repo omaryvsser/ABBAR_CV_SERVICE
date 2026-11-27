@@ -65,6 +65,35 @@ class DwellTarget:
             return False
         return (self.x <= px <= self.right) and (self.y <= py <= self.bottom)
 
+    def contains_entry(self, px: float, py: float, margin: float = 0.0) -> bool:
+        """
+        Check if point (px, py) lies inside the entry boundary.
+        A positive margin expands the entry region; negative insets it.
+        """
+        if px is None or py is None or not math.isfinite(px) or not math.isfinite(py):
+            return False
+        m = float(margin)
+        return ((self.x - m) <= px <= (self.right + m)) and (
+            (self.y - m) <= py <= (self.bottom + m)
+        )
+
+    def contains_exit(self, px: float, py: float, margin: float = 0.04) -> bool:
+        """
+        Check if point (px, py) lies inside the expanded exit boundary.
+        Prevents jitter around target edges from prematurely dropping dwell.
+        """
+        if px is None or py is None or not math.isfinite(px) or not math.isfinite(py):
+            return False
+        m = max(0.0, float(margin))
+        return ((self.x - m) <= px <= (self.right + m)) and (
+            (self.y - m) <= py <= (self.bottom + m)
+        )
+
+    def get_exit_rect(self, margin: float = 0.04) -> Tuple[float, float, float, float]:
+        """Return (x, y, width, height) of the expanded exit boundary."""
+        m = max(0.0, float(margin))
+        return (self.x - m, self.y - m, self.width + 2.0 * m, self.height + 2.0 * m)
+
     def to_rect(self) -> Tuple[float, float, float, float]:
         """Return (x, y, width, height) tuple."""
         return (self.x, self.y, self.width, self.height)
@@ -144,24 +173,36 @@ class TargetManager:
         x: Optional[float],
         y: Optional[float],
         policy: Literal["highest_priority", "smallest_area", "first_defined"] = "highest_priority",
+        current_target_id: Optional[str] = None,
+        exit_margin: float = 0.0,
+        entry_margin: float = 0.0,
     ) -> Optional[DwellTarget]:
         """
         Locate the target containing coordinate (x, y).
 
-        Resolves overlapping targets using the deterministic policy:
-            - 'highest_priority': Highest priority integer wins; breaks ties by target_id.
-            - 'smallest_area': Target with smaller area wins (nested buttons take priority).
-            - 'first_defined': First registered target in order wins.
+        Supports hysteresis:
+            - If (x, y) enters an enabled target's entry boundary, that target is selected.
+            - If (x, y) is outside all entry boundaries, but current_target_id is within
+              its expanded exit boundary (exit_margin > 0), the current target retains ownership.
+            - Resolves overlapping targets using the configured deterministic policy.
 
         Returns:
-            The winning DwellTarget, or None if outside all enabled targets or coordinates are invalid.
+            The winning DwellTarget, or None if outside all targets or coordinates are invalid.
         """
         if x is None or y is None or not math.isfinite(x) or not math.isfinite(y):
             return None
 
-        candidates = [t for t in self.enabled_targets() if t.contains(x, y)]
+        # 1. Check entry containment across all enabled targets
+        candidates = [t for t in self.enabled_targets() if t.contains_entry(x, y, margin=entry_margin)]
+
         if not candidates:
+            # 2. Hysteresis fallback: Check if current target holds gaze within exit margin
+            if current_target_id and exit_margin > 0.0:
+                cur = self.get_target(current_target_id)
+                if cur and cur.enabled and cur.contains_exit(x, y, margin=exit_margin):
+                    return cur
             return None
+
         if len(candidates) == 1:
             return candidates[0]
 

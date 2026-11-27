@@ -66,6 +66,7 @@ class DwellSnapshot:
     Real-time status snapshot produced on every engine update.
 
     Decoupled from OpenCV rendering and accessible for visualizer, UI, and testing.
+    Preserves both raw and filtered gaze coordinates for comparative telemetry.
     """
     state: DwellState = DwellState.IDLE
     current_target_id: Optional[str] = None
@@ -74,8 +75,12 @@ class DwellSnapshot:
     dwell_progress: float = 0.0  # Strictly clamped to [0.0, 1.0]
     remaining_time_ms: float = 0.0
     is_tracking_valid: bool = False
-    gaze_x: Optional[float] = None
+    gaze_x: Optional[float] = None  # Filtered coordinate (for hit testing and visualizer reticle)
     gaze_y: Optional[float] = None
+    raw_gaze_x: Optional[float] = None  # Original raw coordinate before filtering
+    raw_gaze_y: Optional[float] = None
+    is_fixating: bool = True  # True if gaze speed is below saccade velocity threshold
+    filter_type: Optional[str] = None  # Active filter algorithm name
     selection_event: Optional[SelectionEvent] = None
     cooldown_progress: float = 0.0  # Clamped to [0.0, 1.0] when in COOLDOWN
 
@@ -103,6 +108,10 @@ class DwellSnapshot:
             "is_tracking_valid": self.is_tracking_valid,
             "gaze_x": round(self.gaze_x, 4) if self.gaze_x is not None else None,
             "gaze_y": round(self.gaze_y, 4) if self.gaze_y is not None else None,
+            "raw_gaze_x": round(self.raw_gaze_x, 4) if self.raw_gaze_x is not None else None,
+            "raw_gaze_y": round(self.raw_gaze_y, 4) if self.raw_gaze_y is not None else None,
+            "is_fixating": self.is_fixating,
+            "filter_type": self.filter_type,
             "has_selection": self.selection_event is not None,
             "selection_event": self.selection_event.to_dict() if self.selection_event else None,
             "cooldown_progress": round(self.cooldown_progress, 4),
